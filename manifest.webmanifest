@@ -1,0 +1,25 @@
+{
+ "name": "짐로그",
+ "short_name": "짐로그",
+ "description": "%1RM 프로그램 자동 계산 운동 기록장",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "background_color": "#f3f0e8",
+ "theme_color": "#d4491a",
+ "lang": "ko",
+ "icons": [
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png",
+   "purpose": "any maskable"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any maskable"
+  }
+ ]
+}
