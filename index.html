@@ -71,6 +71,24 @@ input[type=number]{text-align:center}
 .ib{flex:none;width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--inp);font-size:20px;line-height:1;color:var(--mute)}
 .ib.on{background:var(--acc);border-color:var(--acc);color:var(--acc-fg)}
 .card.ss{border-left:4px solid var(--acc)}
+.fxbar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 2px 6px;font-size:13px;color:var(--mute)}
+.dots{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.dots button{min-width:36px;height:36px;padding:0 10px;border-radius:18px;border:1px solid var(--line);background:var(--card);font-size:13px;font-weight:600;color:var(--mute)}
+.dots button.ok{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
+.dots button.on{background:var(--acc);border-color:var(--acc);color:var(--acc-fg)}
+.fxnav{display:grid;grid-template-columns:1fr 2fr;gap:8px;margin:0 0 12px}
+.fxnav .btn{min-height:54px;font-size:16px}
+.set.cur input,.set.cur select{border-color:var(--acc);border-width:2px}
+.set.cur .ok{border-color:var(--acc);color:var(--acc);border-width:2px}
+.menu{display:grid;gap:8px}
+.menu button{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card);min-height:62px;color:var(--fg)}
+.menu button b{font-size:16px;display:block}
+.menu button .mute{font-size:13px}
+.steps{font-size:12px;color:var(--mute);letter-spacing:.04em;margin-bottom:4px}
+.bigchips{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin:8px 0}
+.bigchips button{min-height:52px;border:1px solid var(--line);border-radius:10px;background:var(--card);font-size:15px;padding:8px;color:var(--fg)}
+.bigchips button[aria-pressed=true]{background:var(--acc);color:var(--acc-fg);border-color:var(--acc)}
+.fxlist button.r{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;padding:12px 4px;border:0;border-top:1px solid var(--line);background:none;text-align:left;font-size:15px;color:var(--fg)}
 .panel{margin-top:10px;padding:10px;border:1px dashed var(--line);border-radius:8px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
 .chip{background:var(--inp);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:14px;min-height:40px}
@@ -156,7 +174,7 @@ const lsDel=k=>{try{localStorage.removeItem(k)}catch(e){}};
 const addDays=(d,n)=>{const x=parseD(d);x.setDate(x.getDate()+n);return fmtD(x)};
 
 let db=null,S=clone(DEF),LOGS={},BODY={},cur=null,date=todayStr(),tab='today',dirty=false,hasFocus=false,picked=null;
-const APPV='web4';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
+const APPV='web5';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
 let ui={},chain=Promise.resolve(),saveT=null,bodyT=null,setT=null,pend=new Set(),bodyDate=date,rest=null,restTick=null;
 
 /* ---------- sync status ---------- */
@@ -268,7 +286,7 @@ function recoverBody(){
     if(v&&v.updatedAt&&Date.now()-v.updatedAt<48*36e5&&(!BODY[d]||v.updatedAt>(BODY[d].updatedAt||0))){BODY[d]=v;chain=chain.then(()=>db.doc('body/'+d).set(clone(v))).catch(e=>setSync('err',e))}}}catch(e){}
 }
 function openDate(d){
-  date=d;ui={};fsv=null;exf=null;cur=draft(d);render();
+  date=d;ui={};fsv=null;exf=null;fx=null;pickOpen=false;pks=null;cur=draft(d);render();
 }
 
 /* ---------- views ---------- */
@@ -282,10 +300,10 @@ function render(){
 }
 function render0(){
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===tab));
-  $('#view').innerHTML={today:vToday,hist:vHist,body:vBody,prof:vProf,set:vSet}[tab]();
+  $('#view').innerHTML={today:vToday,hist:vHist,body:vBody,prof:vProf,set:()=>setNavWrap(vSet())}[tab]();
 }
 let pickOpen=false;
-function applyPick(pk){if(cur.touched&&stats(cur).done===0){ui={pickask:pk};render();return}picked=pk;cur=draft(date);ui={};render()}
+function applyPick(pk){if(cur.touched&&stats(cur).done===0){ui={pickask:pk};render();return}picked=pk;cur=draft(date);ui={};fx=null;pickOpen=false;pks=null;render()}
 function pickerHtml(){
   const pid=dp(),P=curProg(pid),ws=wkeys(P),wk=cur.week&&P.weeks[cur.week]?cur.week:ws[0],locked=stats(cur).done>0,dis=locked?'disabled':'';
   return`<div class="grid2" style="margin-top:10px"><select id="psel" ${dis} style="grid-column:1/-1">${Object.values(PROGS).map(x=>`<option value="${x.id}" ${x.id===pid?'selected':''}>${esc(x.name)}</option>`).join('')}</select>
@@ -294,7 +312,7 @@ function pickerHtml(){
   ${locked?'<div class="mute" style="margin-top:6px">이미 ✓한 세트가 있어 프로그램·주차·Day는 바꿀 수 없습니다.</div>':'<div class="row" style="margin-top:8px"><button class="btn" data-a="auto">날짜 기준 자동 선택</button></div>'}
   ${ui.pickask?`<div class="panel"><b>편집한 내용이 사라집니다</b><div class="mute">운동 교체·메모·세트 편집이 새로 불러올 운동으로 대체됩니다.</div><div class="row" style="margin-top:6px"><button class="btn pri" data-a="pickok">바꾸기</button><button class="btn" data-a="pickno">취소</button></div></div>`:''}`;
 }
-function vToday(){
+function vTodayList(){
   if(!cur)cur=draft(date);
   const s=session(date),d=parseD(date),st=stats(cur);
   let h=tutToday()+`<div class="card"><div class="row"><input type="date" id="dsel" value="${date}" style="flex:1;text-align:left"><button class="btn" data-a="today">오늘</button></div>`;
@@ -315,7 +333,13 @@ function vToday(){
   cur.exercises.forEach((e,i)=>h+=vEx(e,i));
   if(!cur.free||cur.exercises.length){
     h+=(cur.finishedAt?finishHtml():'')+`<div class="row" style="margin-bottom:12px"><button class="btn" data-a="addex">+ 운동 추가</button></div>
-    <div class="card"><div class="stats" id="stats">${statsHtml(st)}</div>
+    ${endCard()}`;
+  }
+  return h;
+}
+function endCard(){
+  const st=stats(cur);
+  return`<div class="card"><div class="stats" id="stats">${statsHtml(st)}</div>
     <label class="f" style="margin-top:10px">운동시간 (분) — 직접 입력하면 이 값으로 고정됩니다</label>
     <input type="number" inputmode="numeric" data-mn="1" value="${cur.minutesManual&&cur.minutes!=null?cur.minutes:''}" placeholder="${autoMinutes(cur)?autoMinutes(cur)+' (자동 계산)':'자동 계산'}">
     <div class="mute" id="mnwarn" style="margin-top:4px;color:var(--warn)">${!cur.minutesManual&&autoMinutes(cur)>90?'자동 계산이 '+autoMinutes(cur)+'분으로 길게 나왔습니다. 실제 시간을 입력해 주세요.':''}</div>
@@ -325,9 +349,89 @@ function vToday(){
     <input type="number" inputmode="decimal" step="0.1" data-tw="1" value="${esc((BODY[date]||{}).weight??'')}" placeholder="체중계가 없으면 비워 두세요">
     <div class="mute" style="margin-top:4px">체중 평균은 측정한 날만으로 계산합니다. 못 잰 날은 그냥 비우면 됩니다.</div>
     <div class="row" style="margin-top:10px"><button class="btn pri" data-a="finish">${cur.finishedAt?'운동 다시 열기':'운동 마치기'}</button><button class="btn" data-a="sum">요약 보기 / 복사</button>${LOGS[date]?`<button class="btn" data-a="delday" style="${ui.delday?'background:var(--acc);color:var(--acc-fg)':''}">${ui.delday?'정말 이 날 기록 삭제':'이 날 기록 삭제'}</button>`:''}</div>
-    <div id="sumbox"></div></div>`;
+    <div id="sumbox"></div></div>`
+}
+/* ---------- 오늘 탭: 한 종목씩 보기 ---------- */
+let fx=null,fxKey='',fxAll=false,pks=null;
+const exDone=e=>e.check?!!e.done:(e.sets.length>0&&e.sets.every(q=>q.done));
+function fxCur(){
+  const k=cur.date+'|'+(cur.progId||'')+'|'+cur.week+'|'+cur.day,n=cur.exercises.length;
+  if(fxKey!==k){fxKey=k;fx=null}
+  if(fx==null||fx>n){const f=cur.exercises.findIndex(e=>!exDone(e));fx=f<0?n:f}
+  return fx;
+}
+function vToday(){
+  if(!cur)cur=draft(date);
+  if(S.listView||cur.legacy)return vTodayList();
+  return vTodayFocus();
+}
+function pickSheet(){
+  if(stats(cur).done>0)return`<div class="panel mute">이미 ✓한 세트가 있어 프로그램·주차·Day는 바꿀 수 없습니다.</div>`;
+  const ps=pks||{step:0},pid=ps.prog||dp(),P=curProg(pid),ws=wkeys(P);
+  let h=`<div class="panel"><div class="steps">${['프로그램','주차','Day'][ps.step]} 고르기 · ${ps.step+1}/3</div>`;
+  if(ps.step===0)h+=`<div class="bigchips">${Object.values(PROGS).map(x=>`<button data-a="pkp" data-v="${esc(x.id)}" aria-pressed="${x.id===pid}">${esc(x.name)}</button>`).join('')}</div>`;
+  else if(ps.step===1)h+=`<div class="bigchips">${ws.map(w=>`<button data-a="pkw" data-v="${w}" aria-pressed="${w===cur.week&&pid===dp()}">${w}주차</button>`).join('')}</div>`;
+  else{const W=P.weeks[ps.week]||P.weeks[ws[0]];h+=`<div class="bigchips">${W.d.map((D,k)=>`<button data-a="pkd" data-v="${k}" aria-pressed="${k===cur.day&&pid===dp()&&ps.week===cur.week}">Day ${k+1}<br><span style="font-size:12px">${esc(strip(D.n))}</span></button>`).join('')}</div>`}
+  h+=`<div class="row">${ps.step?`<button class="btn" data-a="pkback">← 뒤로</button>`:''}<button class="btn" data-a="auto">날짜 기준 자동</button><button class="btn" data-a="pickt">닫기</button></div></div>`;
+  return h;
+}
+function vTodayFocus(){
+  const s=session(date),d=parseD(date),st=stats(cur),n=cur.exercises.length,i=fxCur();
+  let h=(window.tutToday?tutToday():'')+`<div class="card fxhead"><div class="row"><input type="date" id="dsel" value="${date}" style="flex:1;text-align:left"><button class="btn" data-a="today">오늘</button></div>`;
+  if(cur.free){
+    h+=`<p class="mute" style="margin:10px 0 0">${s.pre?'프로그램 시작 전입니다.':'오늘은 프로그램상 휴식일입니다.'} 프로그램의 Day를 고르거나 자유 운동을 기록하세요.</p>
+    <div class="row" style="margin-top:8px"><button class="btn" data-a="pickt">Day 고르기</button>${n?'':'<button class="btn pri" data-a="addex">+ 자유 운동 기록</button>'}</div>`;
+  }else{
+    const P=curProg(dp()),wt=(P.weeks[cur.week]||{}).t||'';
+    h+=`<div style="margin-top:10px;display:flex;gap:8px;align-items:flex-start;justify-content:space-between"><div style="min-width:0"><span class="tag">${cur.week}주차 · Day ${cur.day+1} · ${DOW[d.getDay()]}</span>
+      <h2>${esc(strip(cur.dayName))}</h2><div class="mute">${esc(cur.progName||P.name)}${wt?' · '+esc(String(wt).split('|').pop().trim()):''}</div>
+      ${s.over?'<div class="mute" style="color:var(--warn)">프로그램 사이클 종료 — 테스트 결과로 1RM 갱신 후 새 사이클.</div>':''}</div>
+      <button class="btn" data-a="pickt" style="flex:none">${pickOpen?'닫기':'변경'}</button></div>
+      ${st.done?'':condHtml()}
+      ${!st.done&&cur.tip?`<details style="margin-top:6px"><summary class="mute">💡 ${cur.week}주차 팁</summary><div class="mute" style="margin:4px 0">${esc(String(cur.tip).replace(/^💡\s*/,''))}</div></details>`:''}`;
+  }
+  if(pickOpen)h+=pickSheet();
+  if(ui.pickask)h+=`<div class="panel"><b>편집한 내용이 사라집니다</b><div class="mute">운동 교체·메모·세트 편집이 새로 불러올 운동으로 대체됩니다.</div><div class="row" style="margin-top:6px"><button class="btn pri" data-a="pickok">바꾸기</button><button class="btn" data-a="pickno">취소</button></div></div>`;
+  h+='</div>';
+  h=ormqHtml()+(conflict&&conflict===date?conflictHtml():'')+h;
+  if(!n)return h;
+  h+=`<div class="fxbar"><span>${i<n?'종목 '+(i+1)+' / '+n:'마무리'} · 세트 ${st.done}/${st.total}</span><button class="btn" data-a="fxall" style="min-height:36px;padding:4px 12px">${fxAll?'목록 닫기':'전체 보기'}</button></div>
+  <div class="dots">${cur.exercises.map((e,k)=>`<button data-a="fxgo" data-i="${k}" class="${k===i?'on':exDone(e)?'ok':''}" aria-label="${esc(cleanName(e.name)||'운동 '+(k+1))}">${k+1}</button>`).join('')}<button data-a="fxgo" data-i="${n}" class="${i===n?'on':''}">끝</button></div>`;
+  if(fxAll){
+    h+=`<div class="card fxlist">${cur.exercises.map((e,k)=>{const dn=e.check?(e.done?1:0):e.sets.filter(q=>q.done).length,tt=e.check?1:e.sets.length;return`<button class="r" data-a="fxgo" data-i="${k}"><span style="min-width:0">${k+1}. ${esc(cleanName(e.name)||'(이름 없음)')}</span><span class="mute">${dn}/${tt}${exDone(e)?' ✓':''}</span></button>`}).join('')}
+    <div class="row" style="margin-top:8px"><button class="btn" data-a="addex">+ 운동 추가</button></div></div>`;
+  }
+  if(i<n){
+    h+=vEx(cur.exercises[i],i);
+    const done=exDone(cur.exercises[i]);
+    h+=`<div class="fxnav"><button class="btn" data-a="fxprev" ${i?'':'disabled'}>← 이전</button><button class="btn ${done?'pri':''}" data-a="fxnext">${i+1<n?'다음 운동 →':'마무리 →'}</button></div>`;
+  }else{
+    h+=(cur.finishedAt?finishHtml():'')+`<div class="row" style="margin-bottom:12px"><button class="btn" data-a="addex">+ 운동 추가</button></div>`+endCard();
   }
   return h;
+}
+/* ---------- 설정 탭: 메뉴 → 화면 ---------- */
+let setSec='';
+const SETSEC=[['orm','내 1RM · 목표','목표 무게 계산 기준'],['prog','운동 프로그램','고르기·만들기·가져오기, 시작일'],['ex','내 종목','종목별 도구·부위·기록 단위'],['backup','백업 · 불러오기','기록을 파일로 저장하고 옮기기'],['help','사용법',''],['view','화면 설정','오늘 탭 보기 방식'],['status','저장 상태','이 기기 저장·앱 버전'],['misc','기타','']];
+function setClass(el){
+  const t=((el.querySelector('h2,summary,b')||el).textContent||'')+' '+(el.textContent||'').slice(0,200);
+  if(el.classList.contains('guide')||/사용법|빠른 시작/.test(t))return'help';
+  if(el.querySelector('#start'))return'prog';
+  if(/운동 프로그램/.test(t))return'prog';
+  if(/현재 1RM/.test(t))return'orm';
+  if(/내 종목/.test(t))return'ex';
+  if(/저장 상태/.test(t))return'status';
+  if(/백업|저장됩니다|공유 DB/.test(t))return'backup';
+  return'misc';
+}
+function viewCard(){return`<div class="card"><h2>화면 설정</h2><label class="chk"><input type="checkbox" data-a="listview" ${S.listView?'checked':''}><span>오늘 탭을 한 화면에 모두 보기 (예전 방식)</span></label><div class="mute">끄면 운동을 한 종목씩 크게 보여 주고, 다 하면 다음 운동으로 넘어갑니다.</div></div>`}
+function setNavWrap(html){
+  if(pb)return html;
+  const tp=document.createElement('template');tp.innerHTML=html;
+  const by={};[...tp.content.children].forEach(el=>{const k=setClass(el);(by[k]=by[k]||[]).push(el.outerHTML)});
+  by.view=[viewCard()];
+  if(setSec&&by[setSec]){const m=SETSEC.find(x=>x[0]===setSec);return`<div class="row" style="margin-bottom:10px"><button class="btn" data-a="setgo" data-sec="">← 설정</button><h2 style="margin:0">${m?m[1]:''}</h2></div>`+(setSec==='help'?by.help.map(h=>h.replace('<details class="card">','<details class="card" open>')):by[setSec]).join('')}
+  return`<div class="card"><h2>설정</h2><div class="menu">${SETSEC.filter(x=>by[x[0]]).map(([k,l,d])=>`<button data-a="setgo" data-sec="${k}"><span><b>${l}</b>${d?`<span class="mute">${d}</span>`:''}</span><span class="mute">›</span></button>`).join('')}</div></div>`;
 }
 function statsHtml(st){
   const m=cur.minutes?`<span><b>${cur.minutes}</b> <span class="mute">분</span></span>`:'';
@@ -384,14 +488,15 @@ function vEx(e,i){
     ${e.free?`<input data-nm="1" data-i="${i}" value="${esc(e.name)}" placeholder="운동 이름" style="font-weight:700;margin:4px 0 2px"><div class="mute" style="font-size:12px">${exTag(e.name)}<button class="btn" data-a="exfnew" data-i="${i}" data-src="free" style="min-height:30px;padding:2px 10px;font-size:12px;margin-left:4px">${exDef(e.name)?'종목 설정 바꾸기':'종목 설정(도구·부위·단위)'}</button></div>`:`<h2>${esc(cleanName(e.name))}</h2>${exDef(e.name)?`<div class="mute" style="font-size:12px">${exTag(e.name)}</div>`:''}`}
     ${unitOf(e)!=='wr'?lastTxt(e):last?`<div class="mute">지난번 ${nf(last.top.w)}×${last.top.r} · e1RM ${nf(last.top.e)}</div>`:''}
     ${e.sug?`<div class="mute" style="color:var(--warn)">${esc(e.sug)}</div>`:''}
-    ${e.lift&&e.tag==='메인'&&!e.attempt&&!e.sets.some(q=>q.type==='warm')&&warmup((e.sets[0]||{}).tw)?`<div class="mute">워밍업 제안 ${warmup(e.sets[0].tw)}</div><button class="btn" data-a="addwarm" data-i="${i}" style="margin-top:4px">워밍업 세트 추가 (볼륨에서 제외)</button>`:''}</div>
-    <button class="ib ${ui.swap===i?'on':''}" data-a="swap" data-i="${i}" aria-label="운동 교체">⇄</button>
+    ${e.lift&&e.tag==='메인'&&!e.attempt&&!e.sets.some(q=>q.type==='warm')&&warmup((e.sets[0]||{}).tw)?`<div class="mute">워밍업 제안 ${warmup(e.sets[0].tw)}</div>`:''}</div>
+    
     <button class="ib ${ui.menu===i?'on':''}" data-a="menu" data-i="${i}" aria-label="더보기">⋮</button></div>`;
   if(ui.swap===i)h+=`<div class="panel"><input id="swq" data-sw="${i}" placeholder="운동 이름 검색 또는 직접 입력" value="${esc(ui.q||'')}" autocomplete="off"><div class="chips" id="chips">${chipsHtml(ui.q||'')}</div><button class="btn pri" data-a="swapok" data-i="${i}">입력한 이름으로 교체</button> <button class="btn" data-a="exfnew" data-i="${i}" data-src="swap">+ 새 종목 만들기</button><div class="mute" style="margin-top:4px">세트 수는 유지됩니다</div>${exf&&exf.i===i&&exf.src==='swap'?exFormHtml():''}</div>`;
   if(e.free&&exf&&exf.i===i&&exf.src==='free')h+=exFormHtml();
   if(ui.menu===i){
     const hasNext=i<cur.exercises.length-1;
-    h+=`<div class="panel row"><button class="btn" data-a="memo" data-i="${i}">${e.memo?'메모 수정':'메모 추가'}</button><button class="btn" data-a="ana" data-i="${i}">기록 분석 · e1RM</button>
+    const canWarm=e.lift&&e.tag==='메인'&&!e.attempt&&!e.sets.some(q=>q.type==='warm')&&warmup((e.sets[0]||{}).tw);
+    h+=`<div class="panel row"><button class="btn" data-a="swap" data-i="${i}">운동 교체</button><button class="btn" data-a="addset" data-i="${i}">+ 세트</button>${e.sets.length?`<button class="btn" data-a="delset" data-i="${i}" style="${ui.dels===i?'background:var(--acc);color:var(--acc-fg)':''}">${ui.dels===i?'완료한 세트인데 삭제?':'− 세트'}</button>`:''}${canWarm?`<button class="btn" data-a="addwarm" data-i="${i}">워밍업 세트 추가</button>`:''}<button class="btn" data-a="memo" data-i="${i}">${e.memo?'메모 수정':'메모 추가'}</button><button class="btn" data-a="ana" data-i="${i}">기록 분석 · e1RM</button>
       ${e.ss?`<button class="btn" data-a="ss" data-i="${i}">슈퍼세트 해제</button>`:hasNext?`<button class="btn" data-a="ss" data-i="${i}">다음 운동과 슈퍼세트</button>`:''}
       <button class="btn" data-a="delex" data-i="${i}" style="${ui.del===i?'background:var(--acc);color:var(--acc-fg)':''}">${ui.del===i?'정말 삭제':'운동 삭제'}</button></div>`;
   }
@@ -402,9 +507,10 @@ function vEx(e,i){
   }
   if(e.spec)h+=`<div class="mute" style="margin-top:6px">${esc(e.spec)}${e.note?' · '+esc(e.note):''}</div>`;
   h+=setHead(unitOf(e));
+  const nxJ=e.sets.findIndex(q=>!q.done);
   e.sets.forEach((s,j)=>{
     const pl=e.lift&&s.tw?plateStr(s.tw):'';
-    h+=`<div class="set ${s.done?'done':''} ${s.fail?'failed':''}">
+    h+=`<div class="set ${s.done?'done':''} ${s.fail?'failed':''} ${!s.done&&j===nxJ?'cur':''}">
       <button class="stype ${s.type||''}" data-a="stype" data-i="${i}" data-j="${j}" aria-label="세트 종류">${s.type==='warm'?'W':s.type==='drop'?'D':s.type==='fail'?'F':e.sets.slice(0,j).filter(x=>x.type!=='warm').length+1}</button>
       ${setInputs(e,s,i,j)}
       <button class="ok" data-a="done" data-i="${i}" data-j="${j}" aria-label="완료">✓</button>
@@ -415,8 +521,7 @@ function vEx(e,i){
   });
   if(e.attempt){const ok=e.sets.filter(q=>q.done&&!q.fail&&+q.w),bw=ok.length?Math.max(...ok.map(q=>+q.w)):0;
     if(bw)h+=`<div class="panel"><b>최고 성공 ${nf(bw)}kg</b> <button class="btn pri" data-a="recatt" data-i="${i}" style="margin-left:6px">프로필에 1RM으로 기록</button></div>`}
-  h+=`<div class="row" style="margin-top:8px"><button class="btn" data-a="addset" data-i="${i}">+ 세트</button>
-    ${e.sets.length?`<button class="btn" data-a="delset" data-i="${i}" style="${ui.dels===i?'background:var(--acc);color:var(--acc-fg)':''}">${ui.dels===i?'완료한 세트인데 삭제?':'− 세트'}</button>`:''}</div></div>`;
+  h+=`<div class="mute" style="margin-top:8px;font-size:12px">세트 추가·삭제, 운동 교체, 메모는 오른쪽 위 ⋮</div></div>`;
   return h;
 }
 function summary(doc){
@@ -530,20 +635,23 @@ function setInputs(e,s,i,j){
 let exf=null;
 function exfOpen(nm,i,src){
   const d=nm?exDef(nm):null;
-  if(d)exf={n:d.n,eq:d.eq||'기타',m:d.m||'',m2:(d.m2||[]).slice(),u:d.u||'wr',i,src,old:norm(d.n),mT:true};
-  else{const mm=nm?muscleOf(nm):null,p=mm&&mm.find(q=>q[1]>=1);exf={n:nm||'',eq:'',m:p?p[0]:'',m2:mm?mm.filter(q=>q[1]<1).map(q=>q[0]):[],u:'wr',i,src,old:null,mT:!!p}}
+  if(d)exf={n:d.n,eq:d.eq||'기타',m:d.m||'',m2:(d.m2||[]).slice(),u:d.u||'wr',i,src,old:norm(d.n),mT:true,step:5};
+  else{const mm=nm?muscleOf(nm):null,p=mm&&mm.find(q=>q[1]>=1);exf={n:nm||'',eq:'',m:p?p[0]:'',m2:mm?mm.filter(q=>q[1]<1).map(q=>q[0]):[],u:'wr',i,src,old:null,mT:!!p,step:0}}
 }
 function exFormHtml(){
-  const f=exf,ch=(k,v,lab,on)=>`<button data-a="exf" data-k="${k}" data-v="${esc(v)}" aria-pressed="${on?'true':'false'}">${esc(lab)}</button>`;
-  return`<div class="panel"><b>${f.old?'종목 설정 바꾸기':'새 종목 만들기'}</b>
-  <label class="f" style="margin-top:6px">종목 이름</label><input data-exf="n" value="${esc(f.n)}" placeholder="예: 케이블 플라이" autocomplete="off">
-  <label class="f" style="margin-top:8px">운동 도구</label><div class="chips">${EQS.map(v=>ch('eq',v,v,f.eq===v)).join('')}</div>
-  <label class="f" style="margin-top:8px">주 근육 부위</label><div class="chips">${MUS.concat(['없음']).map(v=>ch('m',v,v,f.m===v)).join('')}</div>
-  <label class="f" style="margin-top:8px">보조 부위 (선택, 0.5세트로 셈)</label><div class="chips">${MUS.filter(v=>v!==f.m).map(v=>ch('m2',v,v,f.m2.includes(v))).join('')}</div>
-  <label class="f" style="margin-top:8px">기록 단위</label><div class="chips">${UNITS.map(([v,l])=>ch('u',v,l,f.u===v)).join('')}</div>
-  <div class="mute" style="font-size:12px">무게×횟수: 일반 웨이트 · 횟수: 맨몸(풀업 등) · 시간: 플랭크 등 · 시간×거리: 달리기·사이클</div>
-  ${f.err?`<div style="color:var(--warn);margin-top:6px">${esc(f.err)}</div>`:''}
-  <div class="row" style="margin-top:8px"><button class="btn pri" data-a="exfsave">저장</button><button class="btn" data-a="exfno">취소</button></div></div>`;
+  const f=exf,st=f.step||0,ch=(k,v,lab,on)=>`<button data-a="exf" data-k="${k}" data-v="${esc(v)}" aria-pressed="${on?'true':'false'}">${esc(lab)}</button>`;
+  const T=['종목 이름','운동 도구','주 근육 부위','보조 부위 (선택)','기록 단위','확인'];
+  let b='';
+  if(st===0)b=`<input data-exf="n" value="${esc(f.n)}" placeholder="예: 케이블 플라이" autocomplete="off" style="margin-top:6px"><div class="row" style="margin-top:8px"><button class="btn pri" data-a="exfstep" data-v="1">다음 →</button></div>`;
+  else if(st===1)b=`<div class="bigchips">${EQS.map(v=>ch('eq',v,v,f.eq===v)).join('')}</div>`;
+  else if(st===2)b=`<div class="bigchips">${MUS.concat(['없음']).map(v=>ch('m',v,v==='없음'?'없음 (유산소 등)':v,f.m===v)).join('')}</div>`;
+  else if(st===3)b=`<div class="mute" style="font-size:13px">함께 쓰이는 부위를 고르세요. 여러 개 가능, 0.5세트로 셉니다.</div><div class="bigchips">${MUS.filter(v=>v!==f.m).map(v=>ch('m2',v,v,f.m2.includes(v))).join('')}</div><div class="row"><button class="btn pri" data-a="exfstep" data-v="4">${f.m2.length?'다음 →':'건너뛰기 →'}</button></div>`;
+  else if(st===4)b=`<div class="bigchips">${UNITS.map(([v,l])=>ch('u',v,l,f.u===v)).join('')}</div><div class="mute" style="font-size:12px">무게×횟수: 일반 웨이트 · 횟수: 맨몸(풀업 등) · 시간: 플랭크 등 · 시간×거리: 달리기·사이클</div>`;
+  else{const row=(lab,val,stp)=>`<div class="row" style="justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)"><span><span class="mute">${lab}</span> <b>${esc(val||'-')}</b></span><button class="btn" data-a="exfstep" data-v="${stp}" style="min-height:36px;padding:4px 10px">바꾸기</button></div>`;
+    b=row('이름',f.n,0)+row('도구',f.eq,1)+row('주 부위',f.m,2)+(f.m!=='없음'?row('보조 부위',f.m2.join('·')||'없음',3):'')+row('기록 단위',UNITN[f.u],4)+`<div class="row" style="margin-top:8px"><button class="btn pri" data-a="exfsave">저장</button></div>`}
+  return`<div class="panel"><div class="row" style="justify-content:space-between"><b>${f.old?'종목 설정 바꾸기':'새 종목 만들기'}</b><span class="steps">${st<5?(st+1)+' / 5 · ':''}${T[st]}</span></div>
+  ${b}${f.err?`<div style="color:var(--warn);margin-top:6px">${esc(f.err)}</div>`:''}
+  <div class="row" style="margin-top:8px">${st>0&&st<5?`<button class="btn" data-a="exfstep" data-v="${st===4&&f.m==='없음'?2:st-1}">← 뒤로</button>`:''}<button class="btn" data-a="exfno">취소</button></div></div>`;
 }
 function exfSave(){
   const f=exf;if(!f)return;const n=cleanName(String(f.n||'').trim());
@@ -652,11 +760,11 @@ async function doExport(){
 
 const isIOS=()=>/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const isStandalone=()=>!!(navigator.standalone||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches));
-const TUT_STEPS=['<b>1RM 입력</b> — 설정 탭에서 벤치·스쿼트·데드·OHP 1RM을 넣으면 프로그램 목표 무게가 자동으로 계산됩니다.',
- '<b>기록</b> — 오늘 탭에서 세트를 할 때마다 ✓를 누르고, 끝나면 "운동 마치기"를 누르세요. 운동 교체(⇄)·메모(⋮)·자유 운동 추가도 됩니다.',
- '<b>내 프로그램</b> — 예시 대신 내 프로그램을 쓰려면: 자유 운동을 마친 뒤 "프로그램으로 저장"으로 Day를 하나씩 만들거나, 설정 탭 "샘플 양식 받기"로 받은 엑셀을 채워 올리세요. 샘플 양식과 원래 프로그램을 AI에 주고 "AI에 줄 문구"를 붙여 넣으면 변환해 줍니다. 자세한 방법은 설정 탭 "프로그램 불러오는 법".',
- '<b>홈 화면에 추가</b> — 안드로이드 크롬: 오른쪽 위 ⋮ → "홈 화면에 추가" 또는 "앱 설치". 아이폰 사파리: 아래(또는 주소창 옆) 공유 버튼 □↑ → 메뉴를 내려 "홈 화면에 추가" → 오른쪽 위 "추가"(안 보이면 맨 아래 "작업 편집"에서 추가). 앱처럼 열리고 기록 보존에도 유리합니다. <b>아이폰은 사파리 탭과 홈 화면 앱의 기록이 따로</b>라 홈 화면 아이콘으로만 여세요. 사파리에서 쓰던 기록은 설정 탭 "JSON 백업 저장" → 홈 화면 앱에서 "백업 불러오기"로 옮깁니다.',
- '<b>백업</b> — 기록은 이 폰 브라우저에만 저장됩니다. 설정 탭 "JSON 백업 저장"으로 가끔 파일을 저장해 두세요(2주 넘게 안 하면 알려 드립니다). 새 폰에서는 "백업 불러오기"로 옮깁니다.',
+const TUT_STEPS=['<b>1RM 입력</b> — 설정 → "내 1RM · 목표"에서 벤치·스쿼트·데드·OHP 1RM을 넣으면 프로그램 목표 무게가 자동으로 계산됩니다.',
+ '<b>기록</b> — 오늘 탭은 운동을 하나씩 보여 줍니다. 세트마다 ✓, 다 하면 "다음 운동 →", 마지막에 "운동 마치기". 운동 교체·세트 추가·메모는 운동 오른쪽 위 ⋮, 오늘 운동 목록은 "전체 보기"에 있습니다. 한 화면에 모두 보려면 설정 → 화면 설정.',
+ '<b>내 프로그램</b> — 예시 대신 내 프로그램을 쓰려면: 자유 운동을 마친 뒤 "프로그램으로 저장"으로 Day를 하나씩 만들거나, 설정 → 운동 프로그램 "샘플 양식 받기"로 받은 엑셀을 채워 올리세요. 샘플 양식과 원래 프로그램을 AI에 주고 "AI에 줄 문구"를 붙여 넣으면 변환해 줍니다. 자세한 방법은 설정 → 운동 프로그램 → "프로그램 불러오는 법".',
+ '<b>홈 화면에 추가</b> — 안드로이드 크롬: 오른쪽 위 ⋮ → "홈 화면에 추가" 또는 "앱 설치". 아이폰 사파리: 아래(또는 주소창 옆) 공유 버튼 □↑ → 메뉴를 내려 "홈 화면에 추가" → 오른쪽 위 "추가"(안 보이면 맨 아래 "작업 편집"에서 추가). 앱처럼 열리고 기록 보존에도 유리합니다. <b>아이폰은 사파리 탭과 홈 화면 앱의 기록이 따로</b>라 홈 화면 아이콘으로만 여세요. 사파리에서 쓰던 기록은 설정 → 백업 · 불러오기 "JSON 백업 저장" → 홈 화면 앱에서 "백업 불러오기"로 옮깁니다.',
+ '<b>백업</b> — 기록은 이 폰 브라우저에만 저장됩니다. 설정 → 백업 · 불러오기 "JSON 백업 저장"으로 가끔 파일을 저장해 두세요(2주 넘게 안 하면 알려 드립니다). 새 폰에서는 "백업 불러오기"로 옮깁니다.',
  '<b>인바디</b> — 인바디 앱에서 내보낸 CSV·엑셀을 프로필 탭 "인바디 불러오기"로 넣을 수 있습니다.',
  '<b>AI 분석</b> — 프로필 탭 "Claude로 기록 분석"에서 기간을 고르고 "요약 복사"를 눌러 claude.ai(무료도 됨) 새 채팅에 붙여 넣으면 종목별 추이·정체 구간·약점을 분석해 줍니다.'];
 function tutList(){return'<ol style="margin:6px 0 0;padding-left:20px;display:grid;gap:6px">'+TUT_STEPS.map(x=>'<li class="mute" style="font-size:14px">'+x+'</li>').join('')+'</ol>'}
@@ -664,11 +772,11 @@ function tutToday(){
   if(!lsGet('gl:tutDone',0))return`<div class="card" style="border-color:var(--acc)"><h2>짐로그 사용법</h2>${tutList()}<div class="mute" style="margin-top:8px">자세한 설명은 github.com/DeanEHess/gymlog 의 안내(README)에 있습니다.</div><div class="row" style="margin-top:10px"><button class="btn pri" data-a="tutok">시작하기</button></div></div>`;
   if(isIOS()&&!isStandalone()&&!lsGet('gl:iosTip',0))return`<div class="card" style="border-color:var(--acc)"><b>아이폰은 홈 화면에 추가해서 쓰세요</b>
   <ol style="margin:6px 0 0;padding-left:20px;display:grid;gap:4px"><li class="mute" style="font-size:14px">아래(또는 주소창 옆) 공유 버튼 □↑을 누릅니다.</li><li class="mute" style="font-size:14px">메뉴를 내려 <b>홈 화면에 추가</b> → 오른쪽 위 <b>추가</b>. 안 보이면 맨 아래 "작업 편집"에서 추가합니다.</li><li class="mute" style="font-size:14px">이후로는 홈 화면의 짐로그 아이콘으로만 엽니다.</li></ol>
-  <div class="mute" style="margin-top:6px">사파리 탭과 홈 화면 앱은 기록이 <b>따로</b> 저장됩니다.${Object.keys(LOGS).length?' 이 사파리 탭에 이미 기록이 있으니, 먼저 설정 탭 "JSON 백업 저장"을 하고 홈 화면 앱에서 "백업 불러오기"로 옮기세요.':''}</div>
+  <div class="mute" style="margin-top:6px">사파리 탭과 홈 화면 앱은 기록이 <b>따로</b> 저장됩니다.${Object.keys(LOGS).length?' 이 사파리 탭에 이미 기록이 있으니, 먼저 설정 → 백업 · 불러오기에서 "JSON 백업 저장"을 하고 홈 화면 앱에서 "백업 불러오기"로 옮기세요.':''}</div>
   <div class="row" style="margin-top:8px"><button class="btn pri" data-a="iostipok">알겠어요</button></div></div>`;
-  if(Object.values(S.orm).some(v=>!+v))return`<div class="card" style="border-color:var(--acc)"><b>1RM을 먼저 입력하세요</b><div class="mute" style="margin:4px 0 8px">설정 탭에서 벤치·스쿼트·데드·OHP 1RM을 입력하면 프로그램 목표 무게가 계산됩니다.</div><button class="btn pri" data-tab="set">설정으로</button></div>`;
+  if(Object.values(S.orm).some(v=>!+v))return`<div class="card" style="border-color:var(--acc)"><b>1RM을 먼저 입력하세요</b><div class="mute" style="margin:4px 0 8px">설정 → 내 1RM · 목표에서 벤치·스쿼트·데드·OHP 1RM을 입력하면 프로그램 목표 무게가 계산됩니다.</div><button class="btn pri" data-tab="set" data-sec="orm">1RM 입력하기</button></div>`;
   const lb=+lsGet('gl:lastBackup',0),n=Object.keys(LOGS).length;
-  if(n>=3&&(!lb||Date.now()-lb>14*864e5))return`<div class="card" style="border-color:var(--warn)"><b>백업한 지 ${lb?Math.floor((Date.now()-lb)/864e5)+'일 지났습니다':'아직 없습니다'}</b><div class="mute" style="margin:4px 0 8px">기록은 이 폰 브라우저에만 있어요. 설정 탭에서 JSON 백업을 저장해 두세요.</div><button class="btn" data-tab="set">백업하러 가기</button></div>`;
+  if(n>=3&&(!lb||Date.now()-lb>14*864e5))return`<div class="card" style="border-color:var(--warn)"><b>백업한 지 ${lb?Math.floor((Date.now()-lb)/864e5)+'일 지났습니다':'아직 없습니다'}</b><div class="mute" style="margin:4px 0 8px">기록은 이 폰 브라우저에만 있어요. 설정 → 백업 · 불러오기에서 JSON 백업을 저장해 두세요.</div><button class="btn" data-tab="set">백업하러 가기</button></div>`;
   return'';
 }
 let impData=null;
@@ -1210,21 +1318,21 @@ ${src}
 function progHelp(){
   const live=AIMODE!=='copy';
   const steps=live?[
-    '설정 탭에서 <b>내 1RM</b>부터 입력합니다. kg로 적힌 프로그램을 내 1RM 대비 %로 바꿀 때 씁니다.',
+    '설정 → <b>내 1RM · 목표</b>에서 1RM부터 입력합니다. kg로 적힌 프로그램을 내 1RM 대비 %로 바꿀 때 씁니다.',
     '인터넷에서 받은 엑셀처럼 <b>아무 양식</b>이면: 아래 <b>Claude로 변환해서 가져오기</b>에 파일(엑셀·CSV·텍스트·사진)을 고르거나 내용을 붙여 넣고 <b>변환하기</b>를 누릅니다. 내 Claude 계정 사용량을 씁니다.',
     '미리보기(몇 주·며칠, Day 이름, 경고)를 확인하고 <b>이대로 가져오기</b>를 누릅니다.',
     '이미 <b>샘플 양식</b>대로 된 엑셀·CSV는 위 <b>엑셀·CSV 프로그램 가져오기</b>로 바로 올리면 됩니다(Claude를 쓰지 않음).',
     '가져온 뒤 <b>이 프로그램 사용</b>을 누르고, 아래 <b>시작일</b>을 1주차 첫 운동일로 맞춥니다.',
     '틀린 곳은 프로그램 목록의 <b>편집</b>에서 고칩니다.'
   ]:[
-    '설정 탭에서 <b>내 1RM</b>부터 입력합니다.',
+    '설정 → <b>내 1RM · 목표</b>에서 1RM부터 입력합니다.',
     '이미 <b>샘플 양식</b>대로 된 엑셀·CSV면 위 <b>엑셀·CSV 프로그램 가져오기</b>로 바로 올립니다.',
     '인터넷에서 받은 엑셀처럼 <b>아무 양식</b>이면: <b>샘플 양식 받기</b>와 <b>AI에 줄 문구 복사</b>를 누른 뒤, claude.ai(무료도 됨) 새 채팅에 원래 파일·샘플 양식·복사한 문구를 같이 올립니다. Claude가 준 엑셀을 위에서 가져옵니다.',
     '가져온 뒤 <b>이 프로그램 사용</b>을 누르고, 아래 <b>시작일</b>을 1주차 첫 운동일로 맞춥니다.',
     '틀린 곳은 프로그램 목록의 <b>편집</b>에서 고칩니다.'
   ];
   const notes=[
-    'Day는 시작일부터 하루씩 이어집니다(시작일이 월요일이면 월=Day 1, 화=Day 2 …). 월·수·금처럼 사이에 쉬는 날이 있는 프로그램은 오늘 탭 <b>프로그램·주차·Day 변경</b>에서 그날 할 Day를 고르세요.',
+    'Day는 시작일부터 하루씩 이어집니다(시작일이 월요일이면 월=Day 1, 화=Day 2 …). 월·수·금처럼 사이에 쉬는 날이 있는 프로그램은 오늘 탭 맨 위 <b>변경</b>에서 그날 할 Day를 고르세요.',
     '1RM 칸에 숫자를 넣으면 무게가 계산되는 엑셀은 계산된 결과(만든 사람 1RM 기준 무게)만 읽힙니다. % 칸이 없으면 내 1RM으로 다시 나눠 %로 바꿉니다.',
     '트레이닝 맥스(TM) 기준 프로그램은 설정의 1RM 칸에 TM을 넣고 쓰세요. RPE로만 정한 종목은 무게 없이 세트×반복으로 들어옵니다.',
     live?'파일이 아주 길면 앞부분(약 6만 자)만 변환합니다. 셀 병합·색으로 구분한 표는 Day·주차가 섞일 수 있으니 미리보기를 꼭 확인하세요.':'셀 병합·색으로 구분한 표는 AI가 Day·주차를 섞을 수 있으니 가져온 뒤 확인하세요.'
@@ -1426,7 +1534,7 @@ function fsHtml(){
     ${ws.length>1?`<label class="f" style="margin-top:8px">적용 주차</label><select data-fs="wk"><option value="all" ${sel(fsv.wk,'all')}>모든 주차 (${ws.length}주)</option>${ws.map(w=>`<option value="${w}" ${sel(fsv.wk,w)}>${w}주차만</option>`).join('')}</select>`:''}${fsv.day>=nd&&fsv.wk!=='all'?`<div class="mute" style="margin-top:4px">다른 주차의 Day ${nd+1}은 운동 없는 날이 됩니다. 나중에 그 주차에도 저장하거나 '편집'에서 채우세요.</div>`:''}`
   :`<label class="f" style="margin-top:8px">프로그램 이름</label><input data-fs="name" value="${esc(fsv.name)}" placeholder="예: 내 상체 루틴" autocomplete="off">
     <label class="f" style="margin-top:8px">주차 수</label><select data-fs="nw">${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${sel(fsv.nw,i+1)}>${i+1}주</option>`).join('')}</select>
-    <div class="mute" style="margin-top:4px">오늘 운동이 Day 1이 됩니다. Day 2부터는 다음 자유 운동을 이 프로그램에 저장하거나 설정 탭 '편집'에서 추가하세요.</div>`}
+    <div class="mute" style="margin-top:4px">오늘 운동이 Day 1이 됩니다. Day 2부터는 다음 자유 운동을 이 프로그램에 저장하거나 설정 → 운동 프로그램의 '편집'에서 추가하세요.</div>`}
   <label class="f" style="margin-top:8px">Day 이름</label><input data-fs="dn" value="${esc(fsv.dn)}" autocomplete="off">
   <div class="mute" style="margin-top:8px">저장될 내용 (웜업 제외, ✓한 세트 기준)</div>${prev||'<div class="mute">저장할 세트가 없습니다.</div>'}
   ${fsv.err?`<div style="color:var(--warn);margin-top:6px">${esc(fsv.err)}</div>`:''}
@@ -1609,7 +1717,7 @@ document.addEventListener('focusin',e=>{hasFocus=/INPUT|TEXTAREA|SELECT/.test(e.
 document.addEventListener('focusout',()=>{hasFocus=false});
 document.addEventListener('click',e=>{
   const t=e.target.closest('button,input[type=checkbox]');if(!t)return;
-  if(t.dataset.tab){ui={};tab=t.dataset.tab;if(tab==='today')cur=cur&&cur.date===date?cur:draft(date);render();return}
+  if(t.dataset.tab){ui={};if(t.dataset.tab==='set')setSec=t.dataset.sec||'';tab=t.dataset.tab;if(tab==='today')cur=cur&&cur.date===date?cur:draft(date);render();return}
   if(t.dataset.chr){const c_=chOf(t);if(c_){chSetMode(c_,t.dataset.chr);c_.sel=null;chDraw(c_)}return}
   if(t.dataset.rest){if(t.dataset.rest==='stop')stopRest();else{if(rest)rest.end+=30000;else startRest(30)}return}
   const a=t.dataset.a;if(!a)return;const i=+t.dataset.i,j=+t.dataset.j;
@@ -1636,7 +1744,7 @@ document.addEventListener('click',e=>{
       }
       const now=Date.now();s.doneAt=now;
       if(s.type==='warm'){stopRest()}
-      else{const nx=ssNext(i,j);if(nx){stopRest();flash('슈퍼세트 → '+nx.name)}else startRest(e2.rest||90)}
+      else{const nx=ssNext(i,j);if(nx){stopRest();flash('슈퍼세트 → '+nx.name);if(!S.listView){const k_=cur.exercises.indexOf(nx);if(k_>=0)fx=k_}}else{startRest(e2.rest||90);if(!S.listView&&e2.ss){const k0=cur.exercises.findIndex(x=>x.ss===e2.ss);if(k0>=0&&k0!==i&&!exDone(cur.exercises[k0]))fx=k0}}}
       const pr=s.type==='warm'?null:detectPR(e2,s);
       if(pr){s.pr=pr.label}else delete s.pr;
       toast(pr?'🏆 '+cleanName(e2.name)+' '+pr.label+'!':'✓ 기록됨',()=>{cur.exercises[i].sets[j]=JSON.parse(snap0);cur.startedAt=st0[0];cur.endedAt=st0[1];stopRest();scheduleSave();render()});
@@ -1655,7 +1763,7 @@ document.addEventListener('click',e=>{
   else if(a==='flushnow'){flushNow();setTimeout(render,400)}
   else if(a==='chk'){const e2=cur.exercises[i];e2.done=t.checked;if(t.checked)e2.doneAt=Date.now();else delete e2.doneAt;scheduleSave();upStats()}
   else if(a==='addset'){const e2=cur.exercises[i],l=e2.sets[e2.sets.length-1]||{};e2.sets.push({tw:l.tw,tr:l.tr,w:l.w??'',r:l.r??'',sec:l.sec??'',min:l.min??'',km:l.km??'',rir:'',done:false});scheduleSave();render()}
-  else if(a==='delset'){const ss_=cur.exercises[i].sets,l_=ss_[ss_.length-1];if(l_&&l_.done&&ui.dels!==i){ui.dels=i;render();return}ss_.pop();ui={};scheduleSave();render()}
+  else if(a==='delset'){const ss_=cur.exercises[i].sets,l_=ss_[ss_.length-1];if(l_&&l_.done&&ui.dels!==i){ui={menu:i,dels:i};render();return}ss_.pop();ui={};scheduleSave();render()}
   else if(a==='delex'){if(ui.del!==i){ui.del=i;render();return}cur.exercises.splice(i,1);fixSS();ui={};scheduleSave();render()}
   else if(a==='swap'){ui=ui.swap===i?{}:{swap:i,q:''};render();if(ui.swap===i){const q=$('#swq');if(q)q.focus()}}
   else if(a==='menu'){ui=ui.menu===i?{}:{menu:i};render()}
@@ -1695,7 +1803,17 @@ document.addEventListener('click',e=>{
   else if(a==='auto'){applyPick({date,auto:true})}
   else if(a==='pickok'){picked=ui.pickask;cur=draft(date);ui={};render()}
   else if(a==='pickno'){ui={};render()}
-  else if(a==='pickt'){pickOpen=!pickOpen;render()}
+  else if(a==='pickt'){pickOpen=!pickOpen;pks=null;render()}
+  else if(a==='pkp'){pks={step:1,prog:t.dataset.v};render()}
+  else if(a==='pkw'){pks=Object.assign(pks||{prog:dp()},{step:2,week:+t.dataset.v});render()}
+  else if(a==='pkd'){const q=pks||{prog:dp(),week:cur.week};applyPick({date,prog:q.prog,week:q.week,day:+t.dataset.v})}
+  else if(a==='pkback'){if(pks&&pks.step)pks.step--;render()}
+  else if(a==='fxgo'){fx=+t.dataset.i;fxAll=false;ui={};render();window.scrollTo(0,0)}
+  else if(a==='fxnext'){fx=Math.min(cur.exercises.length,fxCur()+1);ui={};render();window.scrollTo(0,0)}
+  else if(a==='fxprev'){fx=Math.max(0,fxCur()-1);ui={};render();window.scrollTo(0,0)}
+  else if(a==='fxall'){fxAll=!fxAll;render()}
+  else if(a==='setgo'){setSec=t.dataset.sec||'';exf=null;render();window.scrollTo(0,0)}
+  else if(a==='listview'){S.listView=t.checked;saveSettings();render()}
   else if(a==='addrec'){
     const k=$('#rl').value,kg=+$('#rk').value,d=$('#rd').value,nt=$('#rn').value.trim();
     if(!kg||!d){$('#rk').focus();return}
@@ -1717,7 +1835,13 @@ document.addEventListener('click',e=>{
     exfOpen(nm,i_,src);render()}
   else if(a==='exfedit'){const d=(S.ex||{})[t.dataset.k];if(d){exfOpen(d.n,null,'set');render()}}
   else if(a==='exfdel'){const k=t.dataset.k;if(ui.exdel!==k){ui.exdel=k;render();return}if(S.ex)delete S.ex[k];if(S.mmap)delete S.mmap[k];saveSettings();ui={};render()}
-  else if(a==='exf'){if(!exf)return;const k=t.dataset.k,v=t.dataset.v;if(k==='m2'){exf.m2=exf.m2.includes(v)?exf.m2.filter(x=>x!==v):exf.m2.concat([v])}else exf[k]=v;if(k==='eq'&&v==='유산소'&&!exf.mT){exf.m='없음';exf.u='td'}if(k==='m')exf.mT=true;render()}
+  else if(a==='exf'){if(!exf)return;const k=t.dataset.k,v=t.dataset.v;exf.err='';
+    if(k==='m2'){exf.m2=exf.m2.includes(v)?exf.m2.filter(x=>x!==v):exf.m2.concat([v])}else exf[k]=v;
+    if(k==='eq'){if(v==='유산소'&&!exf.mT){exf.m='없음';exf.u='td';exf.step=5}else exf.step=exf.old?5:2}
+    else if(k==='m'){exf.mT=true;if(v==='없음')exf.m2=[];exf.step=exf.old?5:(v==='없음'?4:3)}
+    else if(k==='u')exf.step=5;
+    render()}
+  else if(a==='exfstep'){if(!exf)return;const v=+t.dataset.v;if(exf.step===0&&v>0&&!String(exf.n||'').trim()){exf.err='종목 이름을 입력하세요';render();return}exf.err='';exf.step=v;render()}
   else if(a==='exfsave'){exfSave()}
   else if(a==='exfno'){exf=null;render()}
   else if(a==='tpldl'){tplDownload()}
@@ -1736,7 +1860,7 @@ document.addEventListener('click',e=>{
   else if(a==='applyorm'){const P=PROGS[t.dataset.id];if(P&&P.orm){Object.assign(S.orm,P.orm);saveSettings();xlMsg='1RM을 적용했습니다.';render()}}
   else if(a==='pickname'){applySwap(ui.swap,ui.opts[+t.dataset.k])}
   else if(a==='swapok'){const q=$('#swq');applySwap(i,q?q.value:'')}
-  else if(a==='addex'){cur.exercises.push({tag:'추가',name:'',free:true,rest:90,sets:[{w:'',r:'',rir:'',done:false}]});scheduleSave();render()}
+  else if(a==='addex'){cur.exercises.push({tag:'추가',name:'',free:true,rest:90,sets:[{w:'',r:'',rir:'',done:false}]});fx=cur.exercises.length-1;fxAll=false;scheduleSave();render()}
   else if(a==='sum'){
     const txt=summary(cur);
     $('#sumbox').innerHTML=`<pre id="sumtxt">${esc(txt)}</pre><div class="row" style="margin-top:8px"><button class="btn" data-a="copy">복사</button></div>`;
