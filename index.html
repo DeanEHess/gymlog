@@ -156,7 +156,7 @@ const lsDel=k=>{try{localStorage.removeItem(k)}catch(e){}};
 const addDays=(d,n)=>{const x=parseD(d);x.setDate(x.getDate()+n);return fmtD(x)};
 
 let db=null,S=clone(DEF),LOGS={},BODY={},cur=null,date=todayStr(),tab='today',dirty=false,hasFocus=false,picked=null;
-const APPV='web3';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
+const APPV='web4';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
 let ui={},chain=Promise.resolve(),saveT=null,bodyT=null,setT=null,pend=new Set(),bodyDate=date,rest=null,restTick=null;
 
 /* ---------- sync status ---------- */
@@ -268,7 +268,7 @@ function recoverBody(){
     if(v&&v.updatedAt&&Date.now()-v.updatedAt<48*36e5&&(!BODY[d]||v.updatedAt>(BODY[d].updatedAt||0))){BODY[d]=v;chain=chain.then(()=>db.doc('body/'+d).set(clone(v))).catch(e=>setSync('err',e))}}}catch(e){}
 }
 function openDate(d){
-  date=d;ui={};fsv=null;cur=draft(d);render();
+  date=d;ui={};fsv=null;exf=null;cur=draft(d);render();
 }
 
 /* ---------- views ---------- */
@@ -340,6 +340,7 @@ function allNames(){
   const set=new Set(LIB);const add_=x=>{x=cleanName(x);if(x)set.add(x)};
   Object.values(PROGS).forEach(G=>Object.values(G.weeks).forEach(P=>P.d.forEach(D=>D.b.forEach(b=>{add_(b.t.includes(':')?b.t.split(/\s*:\s*/)[1]:b.t);b.r.forEach(r=>{if(!r.k)add_(r.l)})}))));
   Object.values(LOGS).forEach(l=>(l.exercises||[]).forEach(x=>{if(x.name)add_(x.name)}));
+  Object.values(S.ex||{}).forEach(d=>add_(d.n));
   return[...set].filter(n=>n&&!/추가 운동 없음|셋업 큐 점검|밴드 풀어파트/.test(n)&&!/^SET/.test(n)).sort((a,b)=>a.localeCompare(b,'ko'));
 }
 function hist(name){
@@ -356,7 +357,7 @@ function ssLabel(id){const ids=[...new Set(cur.exercises.filter(x=>x.ss).map(x=>
 function chipsHtml(q){
   const n=norm(q),names=allNames().filter(x=>!n||norm(x).includes(n)).slice(0,12);
   ui.opts=names;
-  return names.map((x,k)=>{const mm=muscleOf(x),lab=mm?mm.filter(q=>q[1]>=1).map(q=>q[0]).join('·'):'';return`<button class="chip" data-a="pickname" data-k="${k}">${esc(x)}${lab?` <span class="mute" style="font-size:12px">· ${esc(lab)}</span>`:''}</button>`}).join('')||'<span class="mute">일치하는 운동이 없으면 아래 버튼으로 이 이름 그대로 교체합니다.</span>';
+  return names.map((x,k)=>{const mm=muscleOf(x),dd=exDef(x),lab=[dd&&dd.eq,mm?mm.filter(q=>q[1]>=1).map(q=>q[0]).join('·'):''].filter(Boolean).join(' · ');return`<button class="chip" data-a="pickname" data-k="${k}">${esc(x)}${lab?` <span class="mute" style="font-size:12px">· ${esc(lab)}</span>`:''}</button>`}).join('')||'<span class="mute">일치하는 운동이 없으면 아래 버튼으로 이 이름 그대로 교체합니다.</span>';
 }
 function applySwap(i,name){
   const e=cur.exercises[i];name=String(name||'').trim();if(!name)return;
@@ -367,6 +368,7 @@ function applySwap(i,name){
   ui={};scheduleSave();render();
 }
 function anaHtml(e){
+  if(unitOf(e)!=='wr'){const L=recentSes(e.name,8);return`<div class="panel">${L.length?L.map(x=>`<div class="anarow" style="grid-template-columns:52px 1fr"><span>${x.d.slice(5)}</span><span>${esc(x.t)}</span></div>`).join(''):'<div class="mute">아직 기록이 없습니다.</div>'}<div class="mute" style="margin-top:6px">${UNITN[unitOf(e)]} 종목이라 무게·e1RM 그래프 대신 최근 기록만 보여 줍니다.</div></div>`}
   const H=hist(e.name);
   if(!H.length)return`<div class="panel mute">이 앱에 쌓인 ‘${esc(e.name)}’ 기록이 아직 없습니다. ✓로 기록하면 e1RM과 추이가 여기에 나옵니다. (앱 도입 전 기록은 포함되지 않습니다.)</div>`;
   const best=Math.max(...H.map(h=>h.top.e)),last=H[H.length-1];
@@ -379,13 +381,14 @@ function anaHtml(e){
 function vEx(e,i){
   const last=hist(e.name).filter(h=>h.date!==cur.date).pop();
   let h=`<div class="card ${e.ss?'ss':''}"><div class="exh"><div style="min-width:0;flex:1"><div class="tag">${esc(e.tag||'')}${e.ss?` · 슈퍼세트 ${ssLabel(e.ss)}`:''}${e.orig?` · 원래 ${esc(e.orig)}`:''}</div>
-    ${e.free?`<input data-nm="1" data-i="${i}" value="${esc(e.name)}" placeholder="운동 이름" style="font-weight:700;margin:4px 0 2px">`:`<h2>${esc(cleanName(e.name))}</h2>`}
-    ${last?`<div class="mute">지난번 ${nf(last.top.w)}×${last.top.r} · e1RM ${nf(last.top.e)}</div>`:''}
+    ${e.free?`<input data-nm="1" data-i="${i}" value="${esc(e.name)}" placeholder="운동 이름" style="font-weight:700;margin:4px 0 2px"><div class="mute" style="font-size:12px">${exTag(e.name)}<button class="btn" data-a="exfnew" data-i="${i}" data-src="free" style="min-height:30px;padding:2px 10px;font-size:12px;margin-left:4px">${exDef(e.name)?'종목 설정 바꾸기':'종목 설정(도구·부위·단위)'}</button></div>`:`<h2>${esc(cleanName(e.name))}</h2>${exDef(e.name)?`<div class="mute" style="font-size:12px">${exTag(e.name)}</div>`:''}`}
+    ${unitOf(e)!=='wr'?lastTxt(e):last?`<div class="mute">지난번 ${nf(last.top.w)}×${last.top.r} · e1RM ${nf(last.top.e)}</div>`:''}
     ${e.sug?`<div class="mute" style="color:var(--warn)">${esc(e.sug)}</div>`:''}
     ${e.lift&&e.tag==='메인'&&!e.attempt&&!e.sets.some(q=>q.type==='warm')&&warmup((e.sets[0]||{}).tw)?`<div class="mute">워밍업 제안 ${warmup(e.sets[0].tw)}</div><button class="btn" data-a="addwarm" data-i="${i}" style="margin-top:4px">워밍업 세트 추가 (볼륨에서 제외)</button>`:''}</div>
     <button class="ib ${ui.swap===i?'on':''}" data-a="swap" data-i="${i}" aria-label="운동 교체">⇄</button>
     <button class="ib ${ui.menu===i?'on':''}" data-a="menu" data-i="${i}" aria-label="더보기">⋮</button></div>`;
-  if(ui.swap===i)h+=`<div class="panel"><input id="swq" data-sw="${i}" placeholder="운동 이름 검색 또는 직접 입력" value="${esc(ui.q||'')}" autocomplete="off"><div class="chips" id="chips">${chipsHtml(ui.q||'')}</div><button class="btn pri" data-a="swapok" data-i="${i}">입력한 이름으로 교체</button> <span class="mute">세트 수는 유지됩니다</span></div>`;
+  if(ui.swap===i)h+=`<div class="panel"><input id="swq" data-sw="${i}" placeholder="운동 이름 검색 또는 직접 입력" value="${esc(ui.q||'')}" autocomplete="off"><div class="chips" id="chips">${chipsHtml(ui.q||'')}</div><button class="btn pri" data-a="swapok" data-i="${i}">입력한 이름으로 교체</button> <button class="btn" data-a="exfnew" data-i="${i}" data-src="swap">+ 새 종목 만들기</button><div class="mute" style="margin-top:4px">세트 수는 유지됩니다</div>${exf&&exf.i===i&&exf.src==='swap'?exFormHtml():''}</div>`;
+  if(e.free&&exf&&exf.i===i&&exf.src==='free')h+=exFormHtml();
   if(ui.menu===i){
     const hasNext=i<cur.exercises.length-1;
     h+=`<div class="panel row"><button class="btn" data-a="memo" data-i="${i}">${e.memo?'메모 수정':'메모 추가'}</button><button class="btn" data-a="ana" data-i="${i}">기록 분석 · e1RM</button>
@@ -398,14 +401,12 @@ function vEx(e,i){
     return h+`<label class="chk"><input type="checkbox" data-a="chk" data-i="${i}" ${e.done?'checked':''}><span>${esc(e.spec||'')} ${e.note?'<span class="mute">· '+esc(e.note)+'</span>':''}</span></label></div>`;
   }
   if(e.spec)h+=`<div class="mute" style="margin-top:6px">${esc(e.spec)}${e.note?' · '+esc(e.note):''}</div>`;
-  h+=`<div class="sethead" style="margin-top:8px"><span>#</span><span>kg</span><span>회</span><span>RIR</span><span></span></div>`;
+  h+=setHead(unitOf(e));
   e.sets.forEach((s,j)=>{
     const pl=e.lift&&s.tw?plateStr(s.tw):'';
     h+=`<div class="set ${s.done?'done':''} ${s.fail?'failed':''}">
       <button class="stype ${s.type||''}" data-a="stype" data-i="${i}" data-j="${j}" aria-label="세트 종류">${s.type==='warm'?'W':s.type==='drop'?'D':s.type==='fail'?'F':e.sets.slice(0,j).filter(x=>x.type!=='warm').length+1}</button>
-      <input type="number" inputmode="decimal" step="0.5" data-f="w" data-i="${i}" data-j="${j}" value="${esc(s.w)}" placeholder="${esc(s.tw??'')}">
-      <input type="number" inputmode="numeric" data-f="r" data-i="${i}" data-j="${j}" value="${esc(s.r)}" placeholder="${esc(/^\d+$/.test(String(s.tr))?s.tr:(s.lr||''))}">
-      ${e.attempt?`<button class="xk" data-a="fail" data-i="${i}" data-j="${j}">${s.fail?'실패':'실패?'}</button>`:`<select data-f="rir" data-i="${i}" data-j="${j}" class="${s.rirAuto?'auto':''}">${['','0','1','2','3','4+'].map(o=>`<option ${String(s.rir)===o?'selected':''}>${o}</option>`).join('')}</select>`}
+      ${setInputs(e,s,i,j)}
       <button class="ok" data-a="done" data-i="${i}" data-j="${j}" aria-label="완료">✓</button>
       ${shortfall(s)&&!e.attempt?`<div class="tgt">미달 사유 ${['힘 부족','통증','폼 무너짐','시간 부족','기타'].map(v=>`<button class="chip" style="min-height:40px;${s.why===v?'background:var(--acc);color:var(--acc-fg);border-color:var(--acc)':''}" data-a="why" data-i="${i}" data-j="${j}" data-v="${v}">${v}</button>`).join(' ')}</div>`:''}
       ${s.pr?`<div class="tgt" style="color:var(--accT);font-weight:700">🏆 ${esc(s.pr)}</div>`:''}
@@ -425,9 +426,9 @@ function summary(doc){
     if(e.check){t+=`- ${e.name}: ${e.done?'했음':'안 함'}\n`;return}
     const ss=e.sets.filter(s=>s.done);
     if(!ss.length&&!e.sets.some(q=>q.fail)){t+=`- ${e.name}: 안 함\n`;return}
-    t+=`- ${e.ss?'['+'슈퍼세트'+'] ':''}${e.name}${e.orig?' (원래 '+e.orig+' → 교체)':''}: ${ss.map(s=>`${{warm:'웜업 ',drop:'드롭 ',fail:'한계 '}[s.type]||''}${nf(s.w)||'-'}×${nf(s.r)||'-'}${s.why?'['+s.why+']':''}${s.pr?' 🏆':''}`).join(' / ')}`;
-    const rr=ss.map(s=>s.rir).filter(x=>x!=='');
-    if(rr.length)t+=` (RIR ${ss.map(s=>s.rir===''?'-':s.rir).join(',')})`;
+    t+=`- ${e.ss?'['+'슈퍼세트'+'] ':''}${e.name}${e.orig?' (원래 '+e.orig+' → 교체)':''}: ${ss.map(s=>`${{warm:'웜업 ',drop:'드롭 ',fail:'한계 '}[s.type]||''}${setTxt(e,s)}${s.why?'['+s.why+']':''}${s.pr?' 🏆':''}`).join(' / ')}`;
+    const rr=ss.map(s=>s.rir).filter(x=>x!==''&&x!=null);
+    if(rr.length)t+=` (RIR ${ss.map(s=>s.rir===''||s.rir==null?'-':s.rir).join(',')})`;
     t+='\n';
     if(e.sets.some(q=>q.fail))t+=`  실패: ${e.sets.filter(q=>q.fail).map(q=>nf(q.w)+'kg').join(', ')}\n`;
     if(e.memo)t+=`  메모: ${e.memo}\n`;
@@ -488,6 +489,82 @@ const MRULES=[
  [/스쿼트|squat|레그프레스|legpress|런지|lunge|핵|hack|스텝업|stepup|불가리안|bulgarian/,[['대퇴사두',1],['둔근',.5]]]
 ];
 const muscleOf=n=>{const k=norm(n);if(S.mmap&&S.mmap[k])return S.mmap[k];const r=MRULES.find(x=>x[0].test(k));return r?r[1]:null};
+/* ---------- 내 종목 (도구·부위·단위) ---------- */
+const EQS=['맨몸','덤벨','바벨','머신','케이블 머신','스미스 머신','케틀벨','밴드','유산소','기타'];
+const UNITS=[['wr','무게 × 횟수'],['r','횟수'],['t','시간'],['td','시간 × 거리']],UNITN={wr:'무게×횟수',r:'횟수',t:'시간',td:'시간×거리'};
+const exDef=n=>(S.ex&&S.ex[norm(n||'')])||null;
+const unitOf=e=>{const d=exDef(e&&e.name);return(d&&d.u)||'wr'};
+function secParse(v){v=String(v??'').trim();if(!v)return'';const m=v.match(/^(\d+):(\d{1,2})$/);if(m)return +m[1]*60+ +m[2];const x=parseFloat(v);return isFinite(x)&&x>=0?Math.round(x):''}
+const secFmt=v=>{if(v===''||v==null||isNaN(+v))return'';v=+v;return Math.floor(v/60)+':'+pad(v%60)};
+function tSec(tr){const x=String(tr??'').trim();let m=x.match(/^(\d+(?:\.\d+)?)\s*분$/);if(m)return Math.round(+m[1]*60);return secParse(x.replace(/\s*초$/,''))}
+function tMin(tr){const m=String(tr??'').trim().match(/^(\d+(?:\.\d+)?)\s*분?$/);return m?+m[1]:''}
+function setTxt(e,q){
+  const u=unitOf(e);
+  if(u==='t')return q.sec!==''&&q.sec!=null?secFmt(q.sec):'-';
+  if(u==='td')return[q.min?nf(+q.min)+'분':'',q.km?nf(+q.km)+'km':''].filter(Boolean).join(' ')||'-';
+  if(u==='r')return(+q.w?nf(q.w)+'kg×':'')+(q.r!==''&&q.r!=null?nf(q.r)+'회':'-');
+  return(nf(q.w)||'-')+'×'+(nf(q.r)||'-');
+}
+const setDoneAny=q=>q.done&&q.type!=='warm'&&(+q.r>0||(q.sec!==''&&q.sec!=null)||+q.min>0||+q.km>0);
+function recentSes(name,n){
+  const k=norm(name),out=[],all=Object.assign({},LOGS);if(cur)all[cur.date]=cur;
+  Object.keys(all).sort().reverse().forEach(d=>{if(out.length>=n)return;(all[d].exercises||[]).forEach(x=>{if(norm(x.name)!==k||x.check)return;const ss=(x.sets||[]).filter(setDoneAny);if(ss.length)out.push({d,t:ss.map(q=>setTxt(x,q)).join(', ')})})});
+  return out.slice(0,n);
+}
+function lastTxt(e){const L=recentSes(e.name,9).filter(x=>x.d!==cur.date);return L.length?`<div class="mute">지난번 ${L[0].d.slice(5)} · ${esc(L[0].t)}</div>`:''}
+function exTag(n){const d=exDef(n);if(!d)return'';return esc([d.eq,d.m&&d.m!=='없음'?d.m:'',UNITN[d.u]].filter(Boolean).join(' · '))+' '}
+function setHead(u){
+  const c=u==='t'?['#','시간 (예: 1:30 또는 90초)','','']:u==='td'?['#','분','km','']:u==='r'?['#','','회','RIR']:['#','kg','회','RIR'];
+  if(u==='t')return`<div class="sethead" style="margin-top:8px"><span>#</span><span style="grid-column:span 2">${c[1]}</span><span></span><span></span></div>`;
+  return`<div class="sethead" style="margin-top:8px">${c.map(x=>`<span>${x}</span>`).join('')}<span></span></div>`;
+}
+function setInputs(e,s,i,j){
+  const u=unitOf(e),ax=`data-i="${i}" data-j="${j}"`;
+  const rir=e.attempt?`<button class="xk" data-a="fail" ${ax}>${s.fail?'실패':'실패?'}</button>`:`<select data-f="rir" ${ax} class="${s.rirAuto?'auto':''}">${['','0','1','2','3','4+'].map(o=>`<option ${String(s.rir)===o?'selected':''}>${o}</option>`).join('')}</select>`;
+  const reps=`<input type="number" inputmode="numeric" data-f="r" ${ax} value="${esc(s.r)}" placeholder="${esc(/^\d+$/.test(String(s.tr))?s.tr:(s.lr||''))}">`;
+  if(u==='t')return`<input type="text" inputmode="numeric" data-f="sec" ${ax} value="${esc(secFmt(s.sec))}" placeholder="${esc(s.tr||'1:30')}" style="grid-column:span 2"><span></span>`;
+  if(u==='td')return`<input type="number" inputmode="decimal" step="0.5" data-f="min" ${ax} value="${esc(s.min??'')}" placeholder="${esc(tMin(s.tr)||'분')}"><input type="number" inputmode="decimal" step="0.1" data-f="km" ${ax} value="${esc(s.km??'')}" placeholder="km"><span></span>`;
+  if(u==='r')return`<span class="mute" style="text-align:center;font-size:12px">맨몸</span>${reps}${rir}`;
+  return`<input type="number" inputmode="decimal" step="0.5" data-f="w" ${ax} value="${esc(s.w)}" placeholder="${esc(s.tw??'')}">${reps}${rir}`;
+}
+let exf=null;
+function exfOpen(nm,i,src){
+  const d=nm?exDef(nm):null;
+  if(d)exf={n:d.n,eq:d.eq||'기타',m:d.m||'',m2:(d.m2||[]).slice(),u:d.u||'wr',i,src,old:norm(d.n),mT:true};
+  else{const mm=nm?muscleOf(nm):null,p=mm&&mm.find(q=>q[1]>=1);exf={n:nm||'',eq:'',m:p?p[0]:'',m2:mm?mm.filter(q=>q[1]<1).map(q=>q[0]):[],u:'wr',i,src,old:null,mT:!!p}}
+}
+function exFormHtml(){
+  const f=exf,ch=(k,v,lab,on)=>`<button data-a="exf" data-k="${k}" data-v="${esc(v)}" aria-pressed="${on?'true':'false'}">${esc(lab)}</button>`;
+  return`<div class="panel"><b>${f.old?'종목 설정 바꾸기':'새 종목 만들기'}</b>
+  <label class="f" style="margin-top:6px">종목 이름</label><input data-exf="n" value="${esc(f.n)}" placeholder="예: 케이블 플라이" autocomplete="off">
+  <label class="f" style="margin-top:8px">운동 도구</label><div class="chips">${EQS.map(v=>ch('eq',v,v,f.eq===v)).join('')}</div>
+  <label class="f" style="margin-top:8px">주 근육 부위</label><div class="chips">${MUS.concat(['없음']).map(v=>ch('m',v,v,f.m===v)).join('')}</div>
+  <label class="f" style="margin-top:8px">보조 부위 (선택, 0.5세트로 셈)</label><div class="chips">${MUS.filter(v=>v!==f.m).map(v=>ch('m2',v,v,f.m2.includes(v))).join('')}</div>
+  <label class="f" style="margin-top:8px">기록 단위</label><div class="chips">${UNITS.map(([v,l])=>ch('u',v,l,f.u===v)).join('')}</div>
+  <div class="mute" style="font-size:12px">무게×횟수: 일반 웨이트 · 횟수: 맨몸(풀업 등) · 시간: 플랭크 등 · 시간×거리: 달리기·사이클</div>
+  ${f.err?`<div style="color:var(--warn);margin-top:6px">${esc(f.err)}</div>`:''}
+  <div class="row" style="margin-top:8px"><button class="btn pri" data-a="exfsave">저장</button><button class="btn" data-a="exfno">취소</button></div></div>`;
+}
+function exfSave(){
+  const f=exf;if(!f)return;const n=cleanName(String(f.n||'').trim());
+  if(!n){f.err='종목 이름을 입력하세요';render();return}
+  if(!f.eq){f.err='운동 도구를 고르세요';render();return}
+  if(!f.m){f.err='주 근육 부위를 고르세요 (유산소 등은 "없음")';render();return}
+  const k=norm(n);S.ex=S.ex||{};S.mmap=S.mmap||{};
+  if(f.old&&f.old!==k){delete S.ex[f.old];delete S.mmap[f.old]}
+  S.ex[k]={n,eq:f.eq,m:f.m,m2:f.m===('없음')?[]:f.m2.filter(x=>x!==f.m),u:f.u};
+  S.mmap[k]=f.m==='없음'?[]:[[f.m,1]].concat(S.ex[k].m2.map(x=>[x,.5]));
+  saveSettings();
+  const i=f.i,src=f.src;exf=null;
+  if(i!=null&&cur&&cur.exercises[i]){if(src==='swap'){applySwap(i,n)}else{cur.exercises[i].name=n;scheduleSave()}}
+  toast('종목 저장: '+n);render();
+}
+function exLibCard(){
+  const L=Object.entries(S.ex||{}).sort((a,b)=>a[1].n.localeCompare(b[1].n,'ko'));
+  return`<div class="card"><h2>내 종목</h2><div class="mute">종목마다 운동 도구·근육 부위·기록 단위(무게×횟수, 횟수, 시간, 시간×거리)를 정해 둡니다. 부위는 주간 부위별 세트에 반영됩니다.</div>
+  ${L.map(([k,d])=>`<div class="row" style="justify-content:space-between;padding:8px 0;border-top:1px solid var(--line);flex-wrap:wrap"><span style="min-width:0;flex:1"><b>${esc(d.n)}</b> <span class="mute">${exTag(d.n)}</span></span><span class="row"><button class="btn" data-a="exfedit" data-k="${esc(k)}">편집</button><button class="btn" data-a="exfdel" data-k="${esc(k)}" style="${ui.exdel===k?'background:var(--acc);color:var(--acc-fg)':''}">${ui.exdel===k?'정말 삭제':'삭제'}</button></span></div>`).join('')}
+  ${exf&&exf.src==='set'?exFormHtml():`<div class="row" style="margin-top:8px"><button class="btn pri" data-a="exfnew" data-src="set">+ 새 종목 만들기</button></div>`}</div>`;
+}
 function weekSets(mon){
   const end=addDays(mon,6),all=Object.assign({},LOGS);if(cur)all[cur.date]=cur;
   const tot={},unk=new Set();MUS.forEach(m=>tot[m]=0);
@@ -1008,9 +1085,9 @@ function aiDigest(wk){
   const ex={};
   ds.forEach(d=>(all[d].exercises||[]).forEach(e=>{
     if(e.check)return;const n=cleanName(e.name||'');if(!n)return;
-    const ss=(e.sets||[]).filter(q=>q.done&&q.type!=='warm'&&+q.r>0);if(!ss.length)return;
+    const ss=(e.sets||[]).filter(setDoneAny);if(!ss.length)return;const u=unitOf(e);
     const o=ex[n]||(ex[n]={n,sets:0,ses:[],best:null});o.sets+=ss.length;
-    const g=[];ss.forEach(q=>{const k=(+q.w?nf(+q.w):'맨몸')+'×'+nf(+q.r),l=g[g.length-1];if(l&&l.k===k)l.c++;else g.push({k,c:1})});
+    const g=[];ss.forEach(q=>{const k=u==='t'||u==='td'?setTxt(e,q):(+q.w?nf(+q.w):'맨몸')+'×'+nf(+q.r),l=g[g.length-1];if(l&&l.k===k)l.c++;else g.push({k,c:1})});
     const rir=ss.map(q=>q.rir).filter(v=>v!==''&&v!=null);
     o.ses.push(md(d)+': '+g.map(x=>x.k+(x.c>1?'×'+x.c:'')).join(', ')+(rir.length?' (RIR '+rir.join('/')+')':'')+(ss.some(q=>q.type==='fail')?' 실패세트':''));
     ss.forEach(q=>{if(+q.w){const v=e1(q.w,q.r,q.rir);if(!o.best||v>o.best.e)o.best={e:v,d}}});
@@ -1292,9 +1369,14 @@ function freeItems(doc){
   const out=[];
   (doc.exercises||[]).forEach(e=>{
     if(e.check)return;const name=cleanName(e.name||'');if(!name)return;
-    let ss=(e.sets||[]).filter(q=>q.type!=='warm'&&+q.r>0);
+    const u=unitOf(e);
+    let ss=(e.sets||[]).filter(q=>q.type!=='warm'&&(u==='t'?q.sec!==''&&q.sec!=null:u==='td'?+q.min>0||+q.km>0:+q.r>0));
     if(ss.some(q=>q.done))ss=ss.filter(q=>q.done);
     if(!ss.length)return;
+    if(u==='t'||u==='td'){
+      const vs=ss.map(q=>u==='t'?+q.sec:+q.min||0),lo=Math.min(...vs),hi=Math.max(...vs),f=x=>u==='t'?x+'초':nf(x)+'분',km=Math.max(0,...ss.map(q=>+q.km||0));
+      out.push({k:null,name,s:ss.length+' × '+(lo===hi?f(lo):f(lo)+'~'+f(hi)),m:km?'지난 거리 '+nf(km)+'km':''});return;
+    }
     const k=e.lift||liftOfName(name),o=k?+S.orm[k]||0:0,mw=Math.max(0,...ss.map(q=>+q.w||0));
     if(k&&o>0&&ss.every(q=>+q.w>0)){
       const rows=ss.map(q=>({p:Math.round(+q.w/o*200)/200,n:Math.round(+q.r)}));
@@ -1503,7 +1585,7 @@ function saveProfile(){
 
 function vSet(){
   if(pb)return pbHtml();
-  return `<details class="card"><summary><b>짐로그 사용법</b></summary>${tutList()}</details>`+progSection()+`<div class="card"><h2>현재 1RM (kg)</h2><div class="grid2">${Object.keys(LN).map(k=>`<div><label class="f">${LN[k]}</label><input type="number" inputmode="decimal" step="2.5" data-o="${k}" value="${S.orm[k]}"></div>`).join('')}</div>
+  return `<details class="card"><summary><b>짐로그 사용법</b></summary>${tutList()}</details>`+progSection()+`${exLibCard()}<div class="card"><h2>현재 1RM (kg)</h2><div class="grid2">${Object.keys(LN).map(k=>`<div><label class="f">${LN[k]}</label><input type="number" inputmode="decimal" step="2.5" data-o="${k}" value="${S.orm[k]}"></div>`).join('')}</div>
   <p class="mute">바꾸면 아직 기록 안 한 날의 목표 중량이 새 1RM으로 계산됩니다 (이미 저장된 기록은 그대로).</p>
   <label class="f" style="margin-top:10px">3대 합계 목표 (kg · 0이면 표시 안 함)</label><input type="number" inputmode="decimal" id="goal3" value="${+S.goal3||0}"></div>
   <div class="card"><div class="grid2"><div><label class="f">시작일 (선택한 프로그램 기준)</label><input type="date" id="start" value="${startOf()}"></div>
@@ -1535,11 +1617,17 @@ document.addEventListener('click',e=>{
       if(e2.attempt)s.fail=false;
       let pv=null;for(let k=j-1;k>=0;k--){if(e2.sets[k].type!=='warm'){pv=e2.sets[k];break}}
       if(s.type==='warm')pv=null;
+      const u_=unitOf(e2);
+      if(u_==='t'||u_==='td'){
+        if(u_==='t'&&(s.sec===''||s.sec==null)){const v=pv&&pv.sec!==''&&pv.sec!=null?pv.sec:tSec(s.tr);if(v!=='')s.sec=v}
+        if(u_==='td'){if((s.min===''||s.min==null)){const v=pv&&pv.min?pv.min:tMin(s.tr);if(v!=='')s.min=v}if((s.km===''||s.km==null)&&pv&&pv.km)s.km=pv.km}
+      }else{
       if(s.rir===''&&pv&&pv.rir!==''&&pv.rir!=null&&!e2.attempt&&s.type!=='warm'){s.rir=pv.rir;s.rirAuto=true}
-      if(s.w===''&&s.tw!=null)s.w=s.tw;if(s.w===''&&pv&&pv.w!=='')s.w=pv.w;
+      if(u_!=='r'){if(s.w===''&&s.tw!=null)s.w=s.tw;if(s.w===''&&pv&&pv.w!=='')s.w=pv.w}
       if(s.r===''&&!/^\d+$/.test(String(s.tr))&&pv&&pv.r!=='')s.r=pv.r;
       if(s.r===''&&/^\d+$/.test(String(s.tr)))s.r=+s.tr;
       if(s.r===''&&s.lr)s.r=s.lr;
+      }
       const now=Date.now();s.doneAt=now;
       if(s.type==='warm'){stopRest()}
       else{const nx=ssNext(i,j);if(nx){stopRest();flash('슈퍼세트 → '+nx.name)}else startRest(e2.rest||90)}
@@ -1560,7 +1648,7 @@ document.addEventListener('click',e=>{
   else if(a==='cfkeep'){conflict=null;scheduleSave();render()}
   else if(a==='flushnow'){flushNow();setTimeout(render,400)}
   else if(a==='chk'){const e2=cur.exercises[i];e2.done=t.checked;if(t.checked)e2.doneAt=Date.now();else delete e2.doneAt;scheduleSave();upStats()}
-  else if(a==='addset'){const e2=cur.exercises[i],l=e2.sets[e2.sets.length-1]||{};e2.sets.push({tw:l.tw,tr:l.tr,w:l.w??'',r:l.r??'',rir:'',done:false});scheduleSave();render()}
+  else if(a==='addset'){const e2=cur.exercises[i],l=e2.sets[e2.sets.length-1]||{};e2.sets.push({tw:l.tw,tr:l.tr,w:l.w??'',r:l.r??'',sec:l.sec??'',min:l.min??'',km:l.km??'',rir:'',done:false});scheduleSave();render()}
   else if(a==='delset'){const ss_=cur.exercises[i].sets,l_=ss_[ss_.length-1];if(l_&&l_.done&&ui.dels!==i){ui.dels=i;render();return}ss_.pop();ui={};scheduleSave();render()}
   else if(a==='delex'){if(ui.del!==i){ui.del=i;render();return}cur.exercises.splice(i,1);fixSS();ui={};scheduleSave();render()}
   else if(a==='swap'){ui=ui.swap===i?{}:{swap:i,q:''};render();if(ui.swap===i){const q=$('#swq');if(q)q.focus()}}
@@ -1617,6 +1705,14 @@ document.addEventListener('click',e=>{
   else if(a==='pbdelitem'){pb.days[+t.dataset.di].items.splice(+t.dataset.ii,1);render()}
   else if(a==='pbcopyw'){const it_=pb.days[+t.dataset.di].items[+t.dataset.ii],v_=(it_.w||[])[0]||'';it_.w=Array.from({length:pb.nw},()=>v_);render()}
   else if(a==='pbsave'){pbSave()}
+  else if(a==='exfnew'){const i_=t.dataset.i!=null?+t.dataset.i:null,src=t.dataset.src||'set';let nm='';
+    if(src==='swap'){const q=$('#swq');nm=q?q.value.trim():''}else if(src==='free'&&i_!=null)nm=cur.exercises[i_].name||'';
+    exfOpen(nm,i_,src);render()}
+  else if(a==='exfedit'){const d=(S.ex||{})[t.dataset.k];if(d){exfOpen(d.n,null,'set');render()}}
+  else if(a==='exfdel'){const k=t.dataset.k;if(ui.exdel!==k){ui.exdel=k;render();return}if(S.ex)delete S.ex[k];if(S.mmap)delete S.mmap[k];saveSettings();ui={};render()}
+  else if(a==='exf'){if(!exf)return;const k=t.dataset.k,v=t.dataset.v;if(k==='m2'){exf.m2=exf.m2.includes(v)?exf.m2.filter(x=>x!==v):exf.m2.concat([v])}else exf[k]=v;if(k==='eq'&&v==='유산소'&&!exf.mT){exf.m='없음';exf.u='td'}if(k==='m')exf.mT=true;render()}
+  else if(a==='exfsave'){exfSave()}
+  else if(a==='exfno'){exf=null;render()}
   else if(a==='tpldl'){tplDownload()}
   else if(a==='aicopy'){const txt=aiPrompt(),bx=$('#aibox');
     (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>{t.textContent='복사됨';$('#tplmsg').textContent='AI 채팅에 붙여 넣고, 원래 프로그램 파일(엑셀·PDF·사진)과 샘플 양식을 같이 올리세요. 받은 엑셀을 아래에서 가져오면 됩니다.'})
@@ -1647,6 +1743,8 @@ document.addEventListener('input',e=>{
   const t=e.target;
   if(t.dataset.fs&&t.tagName==='INPUT'){if(fsv){fsv[t.dataset.fs]=t.value;if(t.dataset.fs==='dn')fsv.dnT=true}}
   else if(t.dataset.pb){pbInput(t)}
+  else if(t.dataset.f==='sec'){const s=cur.exercises[+t.dataset.i].sets[+t.dataset.j];s.sec=secParse(t.value);scheduleSave();upStats()}
+  else if(t.dataset.exf){if(exf){exf[t.dataset.exf]=t.value}}
   else if(t.dataset.f){const e2=cur.exercises[+t.dataset.i],s=e2.sets[+t.dataset.j],old=s[t.dataset.f];s[t.dataset.f]=t.value;
     if(t.dataset.f==='w'){for(let k=+t.dataset.j+1;k<e2.sets.length;k++){const q=e2.sets[k];if(q.done)continue;if(q.w===old||q.w===''){q.w=t.value;const inp=document.querySelector('input[data-f=w][data-i="'+t.dataset.i+'"][data-j="'+k+'"]');if(inp)inp.value=t.value}}}
     scheduleSave();upStats()}
