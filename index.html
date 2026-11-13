@@ -156,7 +156,7 @@ const lsDel=k=>{try{localStorage.removeItem(k)}catch(e){}};
 const addDays=(d,n)=>{const x=parseD(d);x.setDate(x.getDate()+n);return fmtD(x)};
 
 let db=null,S=clone(DEF),LOGS={},BODY={},cur=null,date=todayStr(),tab='today',dirty=false,hasFocus=false,picked=null;
-const APPV='web2';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
+const APPV='web3';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
 let ui={},chain=Promise.resolve(),saveT=null,bodyT=null,setT=null,pend=new Set(),bodyDate=date,rest=null,restTick=null;
 
 /* ---------- sync status ---------- */
@@ -268,7 +268,7 @@ function recoverBody(){
     if(v&&v.updatedAt&&Date.now()-v.updatedAt<48*36e5&&(!BODY[d]||v.updatedAt>(BODY[d].updatedAt||0))){BODY[d]=v;chain=chain.then(()=>db.doc('body/'+d).set(clone(v))).catch(e=>setSync('err',e))}}}catch(e){}
 }
 function openDate(d){
-  date=d;ui={};cur=draft(d);render();
+  date=d;ui={};fsv=null;cur=draft(d);render();
 }
 
 /* ---------- views ---------- */
@@ -575,6 +575,7 @@ async function doExport(){
 
 const TUT_STEPS=['<b>1RM 입력</b> — 설정 탭에서 벤치·스쿼트·데드·OHP 1RM을 넣으면 프로그램 목표 무게가 자동으로 계산됩니다.',
  '<b>기록</b> — 오늘 탭에서 세트를 할 때마다 ✓를 누르고, 끝나면 "운동 마치기"를 누르세요. 운동 교체(⇄)·메모(⋮)·자유 운동 추가도 됩니다.',
+ '<b>내 프로그램</b> — 예시 대신 내 프로그램을 쓰려면: 자유 운동을 마친 뒤 "프로그램으로 저장"으로 Day를 하나씩 만들거나, 설정 탭 "샘플 양식 받기"로 받은 엑셀을 채워 올리세요. 샘플 양식과 원래 프로그램을 AI에 주고 "AI에 줄 문구"를 붙여 넣으면 변환해 줍니다.',
  '<b>홈 화면에 추가</b> — 안드로이드 크롬은 ⋮ 메뉴, 아이폰 사파리는 공유 버튼에서 "홈 화면에 추가". 앱처럼 열리고 기록 보존에도 유리합니다.',
  '<b>백업</b> — 기록은 이 폰 브라우저에만 저장됩니다. 설정 탭 "JSON 백업 저장"으로 가끔 파일을 저장해 두세요(2주 넘게 안 하면 알려 드립니다). 새 폰에서는 "백업 불러오기"로 옮깁니다.',
  '<b>인바디</b> — 인바디 앱에서 내보낸 CSV·엑셀을 프로필 탭 "인바디 불러오기"로 넣을 수 있습니다.',
@@ -919,8 +920,10 @@ function progSection(){
   const items=Object.values(PROGS).map(x=>{const ws=wkeys(x);return`<div class="row" style="justify-content:space-between;padding:8px 0;border-top:1px solid var(--line)"><label class="chk" style="padding:0;flex:1"><input type="radio" name="pg" data-pg="${esc(x.id)}" ${S.progId===x.id?'checked':''}><span>${esc(x.name)} <span class="mute">${ws.length}주 · 주 ${x.weeks[ws[0]].d.length}일</span></span></label>${x.spec?`<button class="btn" data-a="pbedit" data-id="${esc(x.id)}">편집</button>`:''}${x.builtin?'':`<button class="btn" data-a="delprog" data-id="${esc(x.id)}">${ui.delp===x.id?'정말 삭제':'삭제'}</button>`}</div>`}).join('');
   return`<div class="card"><h2>운동 프로그램</h2>${items}
   <div class="row" style="margin-top:12px"><button class="btn pri" data-a="pbnew">+ 프로그램 직접 만들기</button></div><div class="mute" style="margin-top:6px" id="pbmsg">${xlMsg&&xlMsg.startsWith('저장됨')?xlMsg:''}</div>
-  <label class="f" style="margin-top:12px">엑셀(.xlsx) 프로그램 가져오기</label><input type="file" id="xl" accept=".xlsx,.xlsm"><div class="mute" style="margin-top:6px" id="xlmsg">${xlMsg&&xlMsg.startsWith('저장됨')?'':xlMsg}</div>
-  <p class="mute">지원 형식: 주차별 시트('1주차' …)에 Day 열 묶음, 중량 칸이 <code>'1RM입력'!$D$5*0.725</code> 같은 %1RM 수식인 파일 (6주_4분할_프로그램 v3.0과 같은 양식). 그 밖의 양식은 '프로그램 직접 만들기'를 이용하세요.</p></div>`;
+  <label class="f" style="margin-top:12px">엑셀·CSV 프로그램 가져오기</label><input type="file" id="xl" accept=".xlsx,.xlsm,.xls,.csv"><div class="mute" style="margin-top:6px" id="xlmsg">${xlMsg&&xlMsg.startsWith('저장됨')?'':xlMsg}</div>
+  <p class="mute">내 프로그램은 <b>샘플 양식</b>(한 줄 = 주차·Day·운동·세트·반복·%1RM)대로 정리해 올리면 됩니다. 직접 채워도 되고, 샘플 양식과 원래 프로그램 파일을 AI(Claude 등)에 주면서 아래 문구를 붙여 넣으면 이 양식으로 바꿔 줍니다. 6주_4분할_프로그램 v3.0처럼 %1RM 수식이 든 엑셀도 그대로 읽습니다.</p>
+  <div class="row" style="flex-wrap:wrap"><button class="btn" data-a="tpldl">샘플 양식 받기</button><button class="btn" data-a="aicopy">AI에 줄 문구 복사</button></div>
+  <div class="mute" id="tplmsg" style="margin-top:6px">${tplMsg}</div><textarea id="aibox" hidden readonly style="margin-top:6px;min-height:180px"></textarea></div>`;
 }
 let xlMsg='';
 function loadXlsx(){return window.XLSX?Promise.resolve():new Promise((ok,no)=>{const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';sc.onload=ok;sc.onerror=()=>no(new Error('엑셀 라이브러리를 불러오지 못했습니다'));document.head.appendChild(sc)})}
@@ -954,9 +957,255 @@ function parseXlsx(buf,fname){
     });
     if(W.d.length)weeks[+m[1]]=W;
   });
-  if(!Object.keys(weeks).length)throw new Error("'N주차' 시트와 Day 열을 찾지 못했습니다. 이 양식은 아직 지원하지 않습니다.");
-  if(!sets)throw new Error("%1RM 수식으로 된 세트를 찾지 못했습니다. 이 양식은 아직 지원하지 않습니다.");
+  if(!Object.keys(weeks).length)throw new Error("읽을 수 있는 양식이 아닙니다. 위 '샘플 양식 받기'로 받은 양식대로 정리해서 올려 주세요 (AI에 변환을 맡겨도 됩니다).");
+  if(!sets)throw new Error("%1RM 수식으로 된 세트를 찾지 못했습니다. 위 '샘플 양식 받기'로 받은 양식대로 정리해서 올려 주세요.");
   const out={id:'p'+Date.now().toString(36),name:fname.replace(/\.(xlsx|xlsm)$/i,''),weeks,orm,warn,sets};cleanProg(out);return out;
+}
+/* ---------- 파일 저장 ---------- */
+async function saveBin(filename,data){
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type:/\.xlsx$/.test(filename)?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'application/octet-stream'}));a.download=filename;
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);
+}
+/* ---------- 엑셀 샘플 양식 · AI 변환 문구 · 양식 가져오기 ---------- */
+let tplMsg='';
+const TPL_H=['주차','Day','Day 이름','운동','1RM 종목','세트','반복','%1RM','메모'];
+const TPL_RULES=['한 줄 = 같은 %1RM·반복으로 하는 세트 묶음입니다. 세트마다 %나 반복이 다르면 같은 운동을 여러 줄로 적습니다 (예시 3주차의 탑세트).',
+ '주차: 1, 2, 3 … / Day: 그 주의 몇 번째 운동일인지 1~7 / Day 이름: 예) 가슴·삼두',
+ '1RM 종목: 벤치·스쿼트·데드·OHP 중 하나를 적으면 무게가 설정의 1RM × %1RM으로 자동 계산됩니다 (2.5kg 단위). 그 밖의 운동은 비워 둡니다.',
+ '1RM 종목이 있는 줄: 세트(숫자), 반복(숫자 하나), %1RM(예: 75)을 적습니다.',
+ '1RM 종목이 빈 줄(보조 운동): 세트(숫자)와 반복(예: 8~12)만 적습니다. 무게는 그날 직접 입력하고, 반복 상한을 채우면 다음에 증량을 제안합니다.',
+ '첫 줄 머리글(주차, Day, Day 이름, 운동, 1RM 종목, 세트, 반복, %1RM, 메모)은 바꾸지 마세요. 웜업 세트는 적지 않습니다.'];
+function tplRows(){
+  const W=[[75,5,3,''],[77.5,5,3,''],[82.5,3,3,''],[70,5,2,'디로드']],rows=[];
+  const D=[['가슴·삼두',[['벤치프레스','벤치']],[['인클라인 덤벨 프레스',3,'8~12'],['케이블 푸시다운',3,'10~15']]],
+           ['하체',[['스쿼트','스쿼트']],[['루마니안 데드리프트',3,'8~10'],['레그 컬',3,'10~15']]],
+           ['등·어깨',[['컨벤셔널 데드리프트','데드'],['밀리터리 프레스','OHP']],[['랫풀다운',3,'8~12'],['사이드 레터럴 레이즈',3,'12~20']]]];
+  W.forEach(([p,n,ns,memo],wi)=>D.forEach(([dn,mains,accs],di)=>{
+    mains.forEach(([nm,l])=>{if(wi===2)rows.push([wi+1,di+1,dn,nm,l,1,3,87.5,'탑세트']);rows.push([wi+1,di+1,dn,nm,l,ns,n,p,wi===2?'백오프':memo])});
+    accs.forEach(([nm,ns2,r])=>rows.push([wi+1,di+1,dn,nm,'',wi===3?2:ns2,r,'',wi===3?'디로드':'']));
+  }));
+  return rows;
+}
+function aiPrompt(){
+  const o=k=>+S.orm[k]?nf(S.orm[k]):'__';
+  return `첨부한 운동 프로그램을 아래 규칙에 맞는 엑셀(.xlsx) 파일로 바꿔 줘. 시트는 1개, 첫 줄은 머리글이다.
+열(이 순서 그대로): 주차 | Day | Day 이름 | 운동 | 1RM 종목 | 세트 | 반복 | %1RM | 메모
+규칙:
+- 한 줄 = 같은 %1RM·반복으로 하는 세트 묶음. 세트마다 %나 반복이 다르면 같은 운동을 여러 줄로 나눈다.
+- 주차는 1부터 숫자. Day는 그 주의 몇 번째 운동일인지 1~7 숫자. Day 이름은 짧게(예: 가슴·삼두).
+- 벤치프레스·스쿼트·데드리프트·오버헤드(밀리터리) 프레스는 1RM 종목 칸에 벤치/스쿼트/데드/OHP 중 하나를 적고, %1RM은 숫자(예: 75), 반복은 숫자 하나로 적는다.
+- 원래 프로그램에 kg으로 적힌 메인 종목은 내 1RM(벤치 ${o('bench')}, 스쿼트 ${o('squat')}, 데드 ${o('dead')}, OHP ${o('ohp')}kg)으로 나눠 %1RM으로 바꾼다.
+- 그 밖의 운동은 1RM 종목과 %1RM을 비우고 세트(숫자)와 반복(예: 8~12)만 적는다.
+- 웜업 세트는 넣지 않는다. 설명·팁은 메모 칸에 짧게 적는다.
+- 해석이 애매한 부분은 표 아래가 아니라 답변 글에 따로 알려 준다.
+예시 줄:
+1 | 1 | 가슴·삼두 | 벤치프레스 | 벤치 | 3 | 5 | 75 |
+1 | 1 | 가슴·삼두 | 인클라인 덤벨 프레스 |  | 3 | 8~12 |  |
+3 | 1 | 가슴·삼두 | 벤치프레스 | 벤치 | 1 | 3 | 87.5 | 탑세트`;
+}
+async function tplDownload(){
+  tplMsg='만드는 중…';render();
+  try{
+    await loadXlsx();
+    const wb=XLSX.utils.book_new(),ws=XLSX.utils.aoa_to_sheet([TPL_H].concat(tplRows()));
+    ws['!cols']=[6,5,12,22,10,6,8,7,12].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb,ws,'프로그램');
+    const hs=XLSX.utils.aoa_to_sheet([['작성 규칙']].concat(TPL_RULES.map(x=>[x]),[[''],['AI에 변환을 맡길 때 같이 붙여 넣을 문구']],aiPrompt().split('\n').map(x=>[x])));
+    hs['!cols']=[{wch:110}];
+    XLSX.utils.book_append_sheet(wb,hs,'설명');
+    await saveBin('gymlog-program-template.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}));
+    tplMsg='샘플 양식을 저장했습니다. 내용을 바꾼 뒤 위 "엑셀·CSV 프로그램 가져오기"로 올리세요.';
+  }catch(e){tplMsg=e&&e.code==='declined'?'취소했습니다.':'파일을 저장하지 못했습니다: '+esc((e&&(e.message||e.code))||e)}
+  render();
+}
+function tplNum(v){if(typeof v==='number')return v;const m=String(v??'').replace(/,/g,'').match(/\d+(?:\.\d+)?/);return m?parseFloat(m[0]):null}
+function tplLift(v){
+  const x=String(v??'').trim();if(!x||/^(없음|-|x|no|none|보조|n\/a)$/i.test(x))return null;
+  if(/벤치|bench/i.test(x))return'bench';if(/스쿼트|squat/i.test(x))return'squat';if(/데드|dead/i.test(x))return'dead';
+  if(/ohp|오버헤드|밀리터리|숄더|프레스|press/i.test(x))return'ohp';return undefined;
+}
+function parseTemplate(rows,fname){
+  const N=c=>String(c??'').replace(/^﻿/,'').replace(/\s+/g,'').toLowerCase();
+  const hi=rows.findIndex(r=>Array.isArray(r)&&r.some(c=>N(c)==='주차')&&r.some(c=>/^(day|일차)(번호)?$/.test(N(c)))&&r.some(c=>/^(운동|운동명|운동이름|종목)$/.test(N(c))));
+  if(hi<0)return null;
+  const H=rows[hi].map(N),col=f=>H.findIndex(f);
+  const C={wk:col(h=>h==='주차'),day:col(h=>/^(day|일차)(번호)?$/.test(h)),dn:col(h=>/^(day|일차)(이름|명)$|^부위$/.test(h)),ex:col(h=>/^(운동|운동명|운동이름|종목)$/.test(h)),
+    lift:col(h=>/1rm/.test(h)&&!h.startsWith('%')&&!/퍼센트|강도/.test(h)),sets:col(h=>/^세트/.test(h)),reps:col(h=>/^(반복|횟수|reps?)/.test(h)),
+    pct:col(h=>h.startsWith('%')||/퍼센트|강도/.test(h)),memo:col(h=>/^(메모|비고|노트)/.test(h))};
+  if(C.sets<0||C.reps<0)throw new Error('세트·반복 열을 찾지 못했습니다. 샘플 양식의 첫 줄 머리글을 그대로 써 주세요.');
+  const warn=[],W={},dnames={};let sets=0,acc=0;
+  rows.slice(hi+1).forEach((r,ri)=>{
+    if(!Array.isArray(r))return;const ln=hi+ri+2,cell=k=>C[k]>=0?r[C[k]]:'';
+    const name=String(cell('ex')??'').trim();if(!name)return;
+    const wk=tplNum(cell('wk')),dy=tplNum(cell('day'));
+    if(!(Number.isInteger(wk)&&wk>=1&&wk<=52&&Number.isInteger(dy)&&dy>=1&&dy<=7)){warn.push(ln+'행 '+name+': 주차·Day를 읽지 못해 건너뜀');return}
+    const memo=String(cell('memo')??'').trim(),dn=String(cell('dn')??'').trim(),ns=tplNum(cell('sets')),repRaw=String(cell('reps')??'').trim();
+    if(!(Number.isInteger(ns)&&ns>=1&&ns<=20)){warn.push(ln+'행 '+name+': 세트 수를 읽지 못해 건너뜀');return}
+    const D=((W[wk]=W[wk]||{})[dy]=W[wk][dy]||{n:'',b:[]});if(dn&&!D.n)D.n=dn;if(dn&&!dnames[dy])dnames[dy]=dn;
+    let k=tplLift(cell('lift'));
+    if(k===undefined){warn.push(ln+'행 '+name+': 1RM 종목 ‘'+cell('lift')+'’을 몰라 보조 운동으로 가져옴');k=null}
+    if(k){
+      let pc=tplNum(cell('pct'));const n=tplNum(repRaw);
+      if(pc!=null&&pc>0&&pc<=1.5)pc*=100;
+      if(!(pc>=10&&pc<=130)||!(n>=1&&n<=50)){warn.push(ln+'행 '+name+': %1RM·반복을 읽지 못해 보조 운동으로 가져옴');k=null}
+      else{
+        if(!/^\d+\s*(회)?\+?$/.test(repRaw))warn.push(ln+'행 '+name+': 반복 ‘'+repRaw+'’을 '+Math.round(n)+'회로 읽음');
+        const rr=Array.from({length:ns},()=>({l:name,k,p:Math.round(pc*100)/10000,n:Math.round(n),m:memo})),last=D.b[D.b.length-1];
+        if(last&&last.r[0]&&last.r[0].k===k&&last.r[0].l===name)last.r.push(...rr);else D.b.push({t:'메인 : '+name,r:rr});
+        sets+=ns;return;
+      }
+    }
+    if(!repRaw)warn.push(ln+'행 '+name+': 반복이 비어 있음');
+    D.b.push({t:'보조B',r:[{l:name,s:ns+' × '+(repRaw||'?'),m:memo}]});acc++;
+  });
+  const weeks={};
+  Object.keys(W).map(Number).sort((a,b)=>a-b).forEach(w=>{
+    const ds=Object.keys(W[w]).map(Number).sort((a,b)=>a-b).filter(dy=>W[w][dy].b.length);
+    if(!ds.length)return;
+    if(ds[ds.length-1]!==ds.length)warn.push(w+'주차: Day '+ds.join('·')+'만 있어 순서대로 Day 1~'+ds.length+'로 씁니다');
+    weeks[w]={t:w+'주차',tip:'',d:ds.map(dy=>({n:W[w][dy].n||dnames[dy]||('Day '+dy),b:W[w][dy].b}))};
+  });
+  if(!Object.keys(weeks).length)throw new Error('운동 줄을 찾지 못했습니다. 둘째 줄부터 운동을 한 줄씩 적어 주세요.');
+  const id='p'+Date.now().toString(36),name=String(fname||'').replace(/\.(xlsx|xlsm|xls|csv)$/i,'')||'내 프로그램';
+  const out={id,name,weeks,orm:{},warn,sets,acc};out.spec=tplSpec(weeks,id,name);cleanProg(out);return out;
+}
+function tplSpec(weeks,id,name){
+  const ws=Object.keys(weeks).map(Number).sort((a,b)=>a-b),nw=ws[ws.length-1];
+  if(ws.length!==nw||nw>12)return null;
+  const nd=weeks[ws[0]].d.length;if(ws.some(w=>weeks[w].d.length!==nd))return null;
+  const days=[];
+  for(let di=0;di<nd;di++){
+    const items=[],key={};
+    ws.forEach((w,wi)=>weeks[w].d[di].b.forEach(b=>{
+      const r0=b.r[0];if(!r0)return;
+      if(r0.k){const kk='m|'+r0.k+'|'+r0.l;let it=key[kk];if(!it){it=key[kk]={k:'main',name:r0.l,lift:r0.k,w:Array(nw).fill('')};items.push(it)}
+        const str=b.r.map(x=>+(x.p*100).toFixed(2)+'x'+x.n).join(' ');it.w[wi]=it.w[wi]?it.w[wi]+' '+str:str}
+      else{const kk='a|'+r0.l+'|'+r0.s+'|'+(r0.m||'');let it=key[kk];if(!it){it=key[kk]={k:'acc',name:r0.l,s:r0.s,m:r0.m||'',wk:[]};items.push(it)}if(!it.wk.includes(w))it.wk.push(w)}
+    }));
+    items.forEach(it=>{if(it.k==='acc'&&it.wk.length===nw)delete it.wk});
+    days.push({n:weeks[ws[0]].d[di].n,items});
+  }
+  return{id,name,nw,days};
+}
+/* ---------- 자유 운동 → 프로그램으로 저장 ---------- */
+let fsv=null;
+function liftOfName(n){
+  const x=strip(n).replace(/\s+/g,'').toLowerCase();
+  if(/^(바벨)?(플랫)?벤치(프레스)?$/.test(x))return'bench';
+  if(/^(바벨)?(백)?스쿼트$/.test(x))return'squat';
+  if(/^(컨벤셔널)?(바벨)?데드(리프트)?$/.test(x))return'dead';
+  if(/^(바벨)?(스탠딩)?(밀리터리|오버헤드)프레스$|^ohp$/.test(x))return'ohp';
+  return null;
+}
+function freeItems(doc){
+  const out=[];
+  (doc.exercises||[]).forEach(e=>{
+    if(e.check)return;const name=cleanName(e.name||'');if(!name)return;
+    let ss=(e.sets||[]).filter(q=>q.type!=='warm'&&+q.r>0);
+    if(ss.some(q=>q.done))ss=ss.filter(q=>q.done);
+    if(!ss.length)return;
+    const k=e.lift||liftOfName(name),o=k?+S.orm[k]||0:0,mw=Math.max(0,...ss.map(q=>+q.w||0));
+    if(k&&o>0&&ss.every(q=>+q.w>0)){
+      const rows=ss.map(q=>({p:Math.round(+q.w/o*200)/200,n:Math.round(+q.r)}));
+      if(rows.every(x=>x.p>=0.1&&x.p<=1.3)){out.push({k,name,rows});return}
+    }
+    const rs=ss.map(q=>Math.round(+q.r)),lo=Math.min(...rs),hi=Math.max(...rs);
+    out.push({k:null,name,s:ss.length+' × '+(lo===hi?lo:lo+'~'+hi),m:mw>0?'지난 무게 '+nf(mw)+'kg':'',why:k&&!o?LN[k]+' 1RM이 없어 보조 운동으로 저장':''});
+  });
+  return out;
+}
+function fsRowsTxt(x){
+  const g=[];x.rows.forEach(r=>{const l=g[g.length-1];if(l&&l.p===r.p&&l.n===r.n)l.c++;else g.push({p:r.p,n:r.n,c:1})});
+  return g.map(z=>+(z.p*100).toFixed(1)+'%×'+z.n+(z.c>1?' '+z.c+'세트':'')).join(', ');
+}
+function progDays(P){
+  if(P.spec)return P.spec.days.map(D=>D.n||'');
+  let best=[];wkeys(P).forEach(w=>{const d=P.weeks[w].d;if(d.length>best.length)best=d});
+  return best.map(D=>D.n||'');
+}
+function fsDefName(){return freeItems(cur).slice(0,2).map(x=>x.name).join('·')||'자유 운동'}
+function fsSel(f,v){
+  if(!fsv)return;
+  if(f==='pid'){fsv.pid=v;fsv.mode='add';fsv.wk='all';if(v==='new')fsv.day=0;else{const nd=progDays(PROGS[v]).length;fsv.day=nd<7?nd:0}}
+  else if(f==='day')fsv.day=+v;
+  else if(f==='nw')fsv.nw=+v;
+  else fsv[f]=v;
+  if((f==='pid'||f==='day')&&!fsv.dnT){const P=PROGS[fsv.pid],dn=P?progDays(P):[];fsv.dn=fsv.day<dn.length?dn[fsv.day]:fsDefName()}
+  render();
+}
+function fsHtml(){
+  if(!cur||!cur.free||cur.legacy||!cur.exercises.length)return'';
+  if(!fsv)return`<div class="row" style="margin-top:10px"><button class="btn" data-a="fsopen">📋 프로그램으로 저장</button></div>`;
+  if(fsv.done)return`<div class="panel">${fsv.done}</div>`;
+  const items=freeItems(cur),P=fsv.pid==='new'?null:PROGS[fsv.pid],dn=P?progDays(P):[],nd=dn.length,ws=P?wkeys(P):[];
+  const sel=(a,b)=>String(a)===String(b)?'selected':'';
+  const prev=items.map(x=>`<div style="padding:4px 0;border-top:1px solid var(--line)"><b>${esc(x.name)}</b> <span class="mute">${x.k?LN[x.k]+' 1RM 연동 · '+fsRowsTxt(x):'보조 · '+esc(x.s)+(x.m?' · '+esc(x.m):'')}${x.why?' · '+esc(x.why):''}</span></div>`).join('');
+  return`<div class="panel"><b>프로그램으로 저장</b>
+  <label class="f">저장할 프로그램</label><select data-fs="pid"><option value="new" ${sel(fsv.pid,'new')}>새 프로그램 만들기</option>${Object.values(PROGS).map(x=>`<option value="${esc(x.id)}" ${sel(fsv.pid,x.id)}>${esc(x.name)}${x.builtin?' (사본으로 저장)':''}</option>`).join('')}</select>
+  ${P?`<label class="f" style="margin-top:8px">Day</label><select data-fs="day">${dn.map((n,i)=>`<option value="${i}" ${sel(fsv.day,i)}>Day ${i+1} · ${esc(n)}</option>`).join('')}${nd<7?`<option value="${nd}" ${sel(fsv.day,nd)}>Day ${nd+1} 새로 추가</option>`:''}</select>
+    ${fsv.day<nd?`<label class="f" style="margin-top:8px">이 Day에 이미 있는 운동은</label><select data-fs="mode"><option value="add" ${sel(fsv.mode,'add')}>그대로 두고 뒤에 덧붙이기</option><option value="rep" ${sel(fsv.mode,'rep')}>지우고 오늘 운동으로 바꾸기</option></select>`:''}
+    ${ws.length>1?`<label class="f" style="margin-top:8px">적용 주차</label><select data-fs="wk"><option value="all" ${sel(fsv.wk,'all')}>모든 주차 (${ws.length}주)</option>${ws.map(w=>`<option value="${w}" ${sel(fsv.wk,w)}>${w}주차만</option>`).join('')}</select>`:''}${fsv.day>=nd&&fsv.wk!=='all'?`<div class="mute" style="margin-top:4px">다른 주차의 Day ${nd+1}은 운동 없는 날이 됩니다. 나중에 그 주차에도 저장하거나 '편집'에서 채우세요.</div>`:''}`
+  :`<label class="f" style="margin-top:8px">프로그램 이름</label><input data-fs="name" value="${esc(fsv.name)}" placeholder="예: 내 상체 루틴" autocomplete="off">
+    <label class="f" style="margin-top:8px">주차 수</label><select data-fs="nw">${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${sel(fsv.nw,i+1)}>${i+1}주</option>`).join('')}</select>
+    <div class="mute" style="margin-top:4px">오늘 운동이 Day 1이 됩니다. Day 2부터는 다음 자유 운동을 이 프로그램에 저장하거나 설정 탭 '편집'에서 추가하세요.</div>`}
+  <label class="f" style="margin-top:8px">Day 이름</label><input data-fs="dn" value="${esc(fsv.dn)}" autocomplete="off">
+  <div class="mute" style="margin-top:8px">저장될 내용 (웜업 제외, ✓한 세트 기준)</div>${prev||'<div class="mute">저장할 세트가 없습니다.</div>'}
+  ${fsv.err?`<div style="color:var(--warn);margin-top:6px">${esc(fsv.err)}</div>`:''}
+  <div class="mute" style="margin-top:6px">벤치·스쿼트·데드·OHP는 오늘 무게를 설정 1RM 대비 %로 저장해 1RM을 바꾸면 무게도 같이 바뀝니다. 그 밖의 운동은 세트×반복만 저장하고 무게는 그날 직접 입력합니다.</div>
+  <div class="row" style="margin-top:8px"><button class="btn pri" data-a="fssave">저장</button><button class="btn" data-a="fsno">닫기</button></div></div>`;
+}
+function fsSpecClear(D,wsel,nw){
+  D.items=D.items.filter(it=>{
+    if(it.k==='main'){it.w=(it.w||[]).map((v,i)=>wsel.includes(i+1)?'':v);return it.w.some(v=>String(v||'').trim())}
+    const have=it.wk&&it.wk.length?it.wk:Array.from({length:nw},(_,i)=>i+1),left=have.filter(w=>!wsel.includes(w));
+    if(!left.length)return false;if(left.length<nw)it.wk=left;else delete it.wk;return true;
+  });
+}
+function fsSpecAdd(D,items,wsel,nw){
+  items.forEach(x=>{
+    if(x.k){const str=x.rows.map(r=>+(r.p*100).toFixed(2)+'x'+r.n).join(' ');D.items.push({k:'main',name:x.name,lift:x.k,w:Array.from({length:nw},(_,i)=>wsel.includes(i+1)?str:'')})}
+    else{const it={k:'acc',name:x.name,s:x.s,m:x.m||''};if(wsel.length<nw)it.wk=wsel.slice();D.items.push(it)}
+  });
+}
+function fsBlocks(items){return items.map(x=>x.k?{t:'메인 : '+x.name,r:x.rows.map(r=>({l:x.name,k:x.k,p:r.p,n:r.n,m:''}))}:{t:'보조B',r:[{l:x.name,s:x.s,m:x.m||''}]})}
+async function putProg(doc){
+  PROGS[doc.id]=cleanProg(clone(doc));
+  if(db){await db.doc('programs/'+doc.id).set(clone(doc))}else lsSet('gl:prog:'+doc.id,doc);
+}
+async function fsSave(){
+  if(!fsv)return;fsv.err='';
+  const items=freeItems(cur);
+  if(!items.length){fsv.err='저장할 세트가 없습니다. 반복 수를 입력하고 ✓한 세트만 저장됩니다.';render();return}
+  const dn=String(fsv.dn||'').trim()||('Day '+(fsv.day+1));
+  let doc,wtxt='';
+  if(fsv.pid==='new'){
+    const name=String(fsv.name||'').trim();if(!name){fsv.err='프로그램 이름을 입력하세요';render();return}
+    const nw=fsv.nw||4,sp={id:'c'+Date.now().toString(36),name,nw,days:[{n:dn,items:[]}]};
+    fsSpecAdd(sp.days[0],items,Array.from({length:nw},(_,i)=>i+1),nw);
+    doc={id:sp.id,name,custom:true,spec:sp,weeks:pbCompile(sp),importedAt:Date.now()};
+    S.starts=S.starts||{};S.starts[sp.id]=todayStr();saveSettings();wtxt=nw+'주';
+  }else{
+    const P=PROGS[fsv.pid];if(!P){fsv.err='프로그램을 찾지 못했습니다';render();return}
+    doc=clone(P);delete doc.builtin;
+    if(P.builtin){doc.id='p'+Date.now().toString(36);doc.name=P.name+' (내 수정)'}
+    const ws=wkeys(doc),wsel=fsv.wk==='all'?ws:[+fsv.wk],nd=progDays(P).length,isNew=fsv.day>=nd;
+    wtxt=fsv.wk==='all'?'모든 주차':fsv.wk+'주차';
+    if(doc.spec){
+      const sp=doc.spec;if(isNew)sp.days.push({n:dn,items:[]});
+      const D=sp.days[Math.min(fsv.day,sp.days.length-1)];D.n=dn;
+      if(!isNew&&fsv.mode==='rep')fsSpecClear(D,wsel,sp.nw);
+      fsSpecAdd(D,items,wsel,sp.nw);doc.weeks=pbCompile(sp);
+    }else{
+      wsel.forEach(w=>{const Wk=doc.weeks[w];let D=isNew?null:Wk.d[fsv.day];if(!D){D={n:dn,b:[]};Wk.d.push(D)}D.n=dn;
+        D.b=(!isNew&&fsv.mode==='rep'?[]:D.b).concat(fsBlocks(items))});
+    }
+    doc.updatedAt=Date.now();
+    if(P.builtin){S.starts=S.starts||{};S.starts[doc.id]=startOf();saveSettings()}
+  }
+  try{await putProg(doc)}catch(e){setSync('err',e);fsv.err='저장에 실패했습니다. 잠시 뒤 다시 눌러 주세요.';render();return}
+  const isCur=S.progId===doc.id;
+  fsv={done:`<b>저장됨</b> · ‘${esc(doc.name)}’ Day ${Math.min(fsv.day,progDays(PROGS[doc.id]).length-1)+1} · ${esc(dn)} (${wtxt}). 이미 기록한 날은 바뀌지 않습니다.${isCur?'':`<div class="row" style="margin-top:8px"><button class="btn pri" data-a="fsuse" data-id="${esc(doc.id)}">이 프로그램 사용</button></div>`}`};
+  render();
 }
 /* ---------- 프로그램 직접 만들기 ---------- */
 let pb=null,pbErr='';
@@ -985,7 +1234,7 @@ function pbCompile(sp){
       const Dd={n:D.n||('Day '+(W.d.length+1)),b:[]};
       D.items.forEach(it=>{
         if(it.k==='main'){const sets=pbParse((it.w||[])[w-1]).out;if(sets.length)Dd.b.push({t:'메인 : '+it.name,r:sets.map(x=>({l:it.name,k:it.lift,p:x.p,n:x.n,m:''}))})}
-        else Dd.b.push({t:'보조B',r:[{l:it.name,s:it.s,m:it.m||''}]});
+        else if(!it.wk||!it.wk.length||it.wk.includes(w))Dd.b.push({t:'보조B',r:[{l:it.name,s:it.s,m:it.m||''}]});
       });
       W.d.push(Dd);
     });
@@ -1005,7 +1254,7 @@ function pbHtml(){
           <div class="row" style="margin-top:8px"><button class="btn" data-a="pbcopyw" ${ax}>1주차를 모든 주차에 복사</button></div></div>`;
       }
       return`<div style="border-top:1px solid var(--line);padding:10px 0"><div class="row" style="flex-wrap:wrap"><input style="flex:2 1 150px" data-pb="in" ${ax} value="${esc(it.name)}" placeholder="보조 운동 이름"><input style="flex:1 1 100px" data-pb="s" ${ax} value="${esc(it.s)}" placeholder="3 × 8~12"><button class="btn" data-a="pbdelitem" ${ax}>삭제</button></div>
-        <input style="margin-top:6px" data-pb="m" ${ax} value="${esc(it.m||'')}" placeholder="메모 (선택)"><div class="mute" style="margin-top:4px">무게는 직접 입력합니다. 지난번에 횟수 상한을 채우면 다음에 증량을 제안합니다.</div></div>`;
+        <input style="margin-top:6px" data-pb="m" ${ax} value="${esc(it.m||'')}" placeholder="메모 (선택)"><div class="mute" style="margin-top:4px">${it.wk&&it.wk.length?it.wk.join('·')+'주차에만 · ':''}무게는 직접 입력합니다. 지난번에 횟수 상한을 채우면 다음에 증량을 제안합니다.</div></div>`;
     }).join('');
     return`<div class="card"><div class="row" style="flex-wrap:wrap"><input style="flex:1 1 140px" data-pb="dn" data-di="${di}" value="${esc(D.n)}" placeholder="Day ${di+1} 이름 (예: 가슴·등)"><button class="btn" data-a="pbdelday" data-di="${di}">Day 삭제</button></div>${items}
       <div class="row" style="margin-top:8px;flex-wrap:wrap"><button class="btn" data-a="pbaddmain" data-di="${di}">+ 1RM 연동 운동</button><button class="btn" data-a="pbaddacc" data-di="${di}">+ 보조 운동</button></div></div>`;
@@ -1169,6 +1418,14 @@ document.addEventListener('click',e=>{
   else if(a==='pbdelitem'){pb.days[+t.dataset.di].items.splice(+t.dataset.ii,1);render()}
   else if(a==='pbcopyw'){const it_=pb.days[+t.dataset.di].items[+t.dataset.ii],v_=(it_.w||[])[0]||'';it_.w=Array.from({length:pb.nw},()=>v_);render()}
   else if(a==='pbsave'){pbSave()}
+  else if(a==='tpldl'){tplDownload()}
+  else if(a==='aicopy'){const txt=aiPrompt(),bx=$('#aibox');
+    (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>{t.textContent='복사됨';$('#tplmsg').textContent='AI 채팅에 붙여 넣고, 원래 프로그램 파일(엑셀·PDF·사진)과 샘플 양식을 같이 올리세요. 받은 엑셀을 아래에서 가져오면 됩니다.'})
+      .catch(()=>{bx.hidden=false;bx.value=txt;bx.focus();bx.select();t.textContent='아래 글을 길게 눌러 복사'})}
+  else if(a==='fsopen'){fsv={pid:'new',name:'',nw:4,day:0,mode:'add',wk:'all',dn:fsDefName(),dnT:false};render()}
+  else if(a==='fsno'){fsv=null;render()}
+  else if(a==='fssave'){fsSave()}
+  else if(a==='fsuse'){S.progId=t.dataset.id;saveSettings();picked=null;fsv={done:'지금 쓰는 프로그램을 ‘'+esc((PROGS[t.dataset.id]||{}).name||'')+'’로 바꿨습니다. 다음 운동일부터 이 프로그램이 나옵니다.'};render()}
   else if(a==='delprog'){const id=t.dataset.id;if(ui.delp!==id){ui.delp=id;render();return}
     delete PROGS[id];if(S.progId===id){S.progId='v3';saveSettings()}ui={};
     if(db)chain=chain.then(()=>db.doc('programs/'+id).delete()).catch(e=>setSync('err',e));else lsDel('gl:prog:'+id);
@@ -1189,7 +1446,8 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('input',e=>{
   const t=e.target;
-  if(t.dataset.pb){pbInput(t)}
+  if(t.dataset.fs&&t.tagName==='INPUT'){if(fsv){fsv[t.dataset.fs]=t.value;if(t.dataset.fs==='dn')fsv.dnT=true}}
+  else if(t.dataset.pb){pbInput(t)}
   else if(t.dataset.f){const e2=cur.exercises[+t.dataset.i],s=e2.sets[+t.dataset.j],old=s[t.dataset.f];s[t.dataset.f]=t.value;
     if(t.dataset.f==='w'){for(let k=+t.dataset.j+1;k<e2.sets.length;k++){const q=e2.sets[k];if(q.done)continue;if(q.w===old||q.w===''){q.w=t.value;const inp=document.querySelector('input[data-f=w][data-i="'+t.dataset.i+'"][data-j="'+k+'"]');if(inp)inp.value=t.value}}}
     scheduleSave();upStats()}
@@ -1214,6 +1472,7 @@ document.addEventListener('change',e=>{
   else if(t.id==='dsl'&&t.value!==''){applyPick({date,prog:dp(),week:cur.week||wkeys(curProg(dp()))[0],day:+t.value})}
   else if(t.id==='pex'){profEx=t.value;render()}
   else if(t.dataset.mi!==undefined&&t.value){const n=(ui.unk||[])[+t.dataset.mi];if(n){S.mmap=S.mmap||{};S.mmap[norm(n)]=t.value==='집계 제외'?[]:[[t.value,1]];saveSettings();render()}}
+  else if(t.dataset.fs&&t.tagName==='SELECT'){fsSel(t.dataset.fs,t.value)}
   else if(t.dataset.pbs){
     if(t.dataset.pbs==='nw'){pb.nw=+t.value;render()}
     else if(t.dataset.pbs==='lift'){pb.days[+t.dataset.di].items[+t.dataset.ii].lift=t.value;render()}
@@ -1256,7 +1515,7 @@ function finishHtml(){
   ${pl&&pl.volume?`<div class="mute">지난주 같은 요일(${pd.slice(5)}) 볼륨 ${nf(pl.volume)}kg 대비 ${dlt(st.vol,pl.volume,'kg')} (${Math.round((st.vol/pl.volume-1)*100)}%)</div>`:''}
   ${st.done<st.total?`<div class="mute">못 한 세트 ${st.total-st.done}개</div>`:''}
   ${prs.length?`<div style="margin-top:6px"><b>🏆 PR ${prs.length}개</b><div class="mute">${prs.map(esc).join(' · ')}</div></div>`:''}
-  <div class="mute" style="margin-top:6px">자극 부위(세트): ${dm.map(x=>x[0]+' '+nf(x[1])).join(' · ')||'-'}</div></div>`;
+  <div class="mute" style="margin-top:6px">자극 부위(세트): ${dm.map(x=>x[0]+' '+nf(x[1])).join(' · ')||'-'}</div>${fsHtml()}</div>`;
 }
 function weekAgg(mon){
   const all=Object.assign({},LOGS);if(cur)all[cur.date]=cur;
@@ -1283,13 +1542,24 @@ function flash(msg){$('#restbar').classList.add('on');$('#restt').textContent=ms
 async function importXlsx(file){
   const msg=$('#xlmsg');msg.textContent='읽는 중…';
   try{
-    await loadXlsx();
-    const prog=parseXlsx(await file.arrayBuffer(),file.name),ws=wkeys(prog);
+    let prog=null;
+    if(/\.csv$/i.test(file.name)){
+      const buf=await file.arrayBuffer();let t=new TextDecoder('utf-8').decode(buf);
+      if(t.includes('\ufffd')){try{t=new TextDecoder('euc-kr').decode(buf)}catch(e){}}
+      prog=parseTemplate(csvRows(t.replace(/^\ufeff/,'')),file.name);
+      if(!prog)throw new Error('머리글(주차·Day·운동)을 찾지 못했습니다. 샘플 양식의 첫 줄 머리글을 그대로 써 주세요.');
+    }else{
+      await loadXlsx();const buf=await file.arrayBuffer(),wb=XLSX.read(buf,{type:'array'});
+      for(const sn of wb.SheetNames){prog=parseTemplate(XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true,defval:''}),file.name);if(prog)break}
+      if(!prog)prog=parseXlsx(buf,file.name);
+    }
+    const ws=wkeys(prog);
     const doc={id:prog.id,name:prog.name,weeks:prog.weeks,orm:prog.orm,importedAt:Date.now()};
+    if(prog.spec){doc.custom=true;doc.spec=prog.spec}
     PROGS[prog.id]=doc;
     if(db){await db.doc('programs/'+prog.id).set(clone(doc))}else lsSet('gl:prog:'+prog.id,doc);
     const o=Object.keys(prog.orm).length?` · 엑셀의 1RM: ${Object.keys(prog.orm).map(k=>LN[k]+' '+prog.orm[k]).join(', ')}`:'';
-    xlMsg=`가져옴: ‘${esc(prog.name)}’ ${ws.length}주 · 주 ${doc.weeks[ws[0]].d.length}일 · %1RM 세트 ${prog.sets}개${o}${prog.warn.length?'<br>주의: '+prog.warn.map(esc).join(' / '):''}
+    xlMsg=`가져옴: ‘${esc(prog.name)}’ ${ws.length}주 · 주 ${doc.weeks[ws[0]].d.length}일 · %1RM 세트 ${prog.sets}개${prog.acc!=null?' · 보조 운동 '+prog.acc+'줄':''}${o}${prog.warn.length?'<br>주의: '+prog.warn.slice(0,8).map(esc).join(' / ')+(prog.warn.length>8?' 외 '+(prog.warn.length-8)+'건':''):''}
       <div class="row" style="margin-top:8px"><button class="btn pri" data-a="useprog" data-id="${prog.id}">이 프로그램 사용</button>${prog.orm&&Object.keys(prog.orm).length?`<button class="btn" data-a="applyorm" data-id="${prog.id}">엑셀 1RM을 설정에 적용</button>`:''}</div>`;
     render();
   }catch(e){xlMsg='가져오기 실패: '+esc(e.message||e);render()}
