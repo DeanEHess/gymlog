@@ -582,7 +582,7 @@ const TUT_STEPS=['<b>1RM 입력</b> — 설정 탭에서 벤치·스쿼트·데�
  '<b>AI 분석</b> — 프로필 탭 "Claude로 기록 분석"에서 기간을 고르고 "요약 복사"를 눌러 claude.ai(무료도 됨) 새 채팅에 붙여 넣으면 종목별 추이·정체 구간·약점을 분석해 줍니다.'];
 function tutList(){return'<ol style="margin:6px 0 0;padding-left:20px;display:grid;gap:6px">'+TUT_STEPS.map(x=>'<li class="mute" style="font-size:14px">'+x+'</li>').join('')+'</ol>'}
 function tutToday(){
-  if(!lsGet('gl:tutDone',0))return`<div class="card" style="border-color:var(--acc)"><h2>짐로그 사용법</h2>${tutList()}<div class="row" style="margin-top:10px"><button class="btn pri" data-a="tutok">시작하기</button></div></div>`;
+  if(!lsGet('gl:tutDone',0))return`<div class="card" style="border-color:var(--acc)"><h2>짐로그 사용법</h2>${tutList()}<div class="mute" style="margin-top:8px">자세한 설명은 github.com/DeanEHess/gymlog 의 안내(README)에 있습니다.</div><div class="row" style="margin-top:10px"><button class="btn pri" data-a="tutok">시작하기</button></div></div>`;
   if(Object.values(S.orm).some(v=>!+v))return`<div class="card" style="border-color:var(--acc)"><b>1RM을 먼저 입력하세요</b><div class="mute" style="margin:4px 0 8px">설정 탭에서 벤치·스쿼트·데드·OHP 1RM을 입력하면 프로그램 목표 무게가 계산됩니다.</div><button class="btn pri" data-tab="set">설정으로</button></div>`;
   const lb=+lsGet('gl:lastBackup',0),n=Object.keys(LOGS).length;
   if(n>=3&&(!lb||Date.now()-lb>14*864e5))return`<div class="card" style="border-color:var(--warn)"><b>백업한 지 ${lb?Math.floor((Date.now()-lb)/864e5)+'일 지났습니다':'아직 없습니다'}</b><div class="mute" style="margin:4px 0 8px">기록은 이 폰 브라우저에만 있어요. 설정 탭에서 JSON 백업을 저장해 두세요.</div><button class="btn" data-tab="set">백업하러 가기</button></div>`;
@@ -629,10 +629,10 @@ function vBody(){
     const cnt={};
     const avg=(from,to)=>{const a=ds.filter(d=>{const n=dayDiff(d,last);return n>=from&&n<=to}).map(d=>WM[d]);cnt[from]=a.length;return a.length?a.reduce((x,y)=>x+y,0)/a.length:null};
     const a1=avg(0,6),a0=avg(7,13);
-    trend=`<div class="card"><div class="stats"><span><b>${nf(a1)}</b> <span class="mute">kg · 최근 7일 평균 (${cnt[0]}회 측정${cnt[0]<3?' · 참고용':''})</span></span>${a0?`<span><b>${(a1-a0>=0?'+':'')+nf(a1-a0)}</b> <span class="mute">kg / 전주 대비 (목표 +0.25)</span></span>`:''}</div>${chart('body-w',wsr,{unit:'kg',label:'체중',def:'90',h:110})}${(()=>{const wd=Object.keys(BODY).filter(d=>+BODY[d].waist).sort();return wd.length>1?'<div class="mute" style="margin-top:10px">허리 (cm)</div>'+chart('body-wa',wd.map(d=>({d,y:+BODY[d].waist})),{unit:'cm',label:'허리',def:'90',h:90}):''})()}</div>`;
+    trend=`<div class="card"><div class="stats"><span><b>${nf(a1)}</b> <span class="mute">kg · 최근 7일 평균 (${cnt[0]}회 측정${cnt[0]<3?' · 참고용':''})</span></span>${a0?`<span><b>${(a1-a0>=0?'+':'')+nf(a1-a0)}</b> <span class="mute">kg / 전주 대비</span></span>`:''}</div>${chart('body-w',wsr,{unit:'kg',label:'체중',def:'90',h:110})}${(()=>{const wd=Object.keys(BODY).filter(d=>+BODY[d].waist).sort();return wd.length>1?'<div class="mute" style="margin-top:10px">허리 (cm)</div>'+chart('body-wa',wd.map(d=>({d,y:+BODY[d].waist})),{unit:'cm',label:'허리',def:'90',h:90}):''})()}</div>`;
   }
   return`<div class="card"><div class="row"><input type="date" id="bdate" value="${bodyDate}" style="flex:1;text-align:left"></div>
-  <div class="grid2" style="margin-top:10px">${f('weight','체중 (kg)','0.1')}${f('waist','허리 (cm) · 배꼽','0.1')}${f('bf','체지방률 (%) · InBody','0.1')}${f('muscle','골격근량 (kg) · InBody','0.1')}</div>
+  <div class="grid2" style="margin-top:10px">${f('weight','체중 (kg)','0.1')}${f('waist','허리 (cm)','0.1')}${f('bf','체지방률 (%)','0.1')}${f('muscle','골격근량 (kg)','0.1')}</div>
   <label class="f" style="margin-top:10px">메모</label><textarea data-b="note">${esc(b.note||'')}</textarea></div>${trend}
   ${Object.keys(BODY).sort().reverse().slice(0,14).map(d=>{const x=BODY[d];return`<div class="hist" style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span><b>${d.slice(5)}</b> <span class="mute">${x.weight?x.weight+'kg ':''}${x.waist?'· 허리 '+x.waist+' ':''}${x.bf?'· 체지방 '+x.bf+'% ':''}${x.muscle?'· 근육 '+x.muscle:''}</span></span><button class="btn" data-a="delbody" data-d="${d}" style="padding:4px 8px;font-size:12px;${ui.delb===d?'background:var(--acc);color:var(--acc-fg)':''}">${ui.delb===d?'정말?':'삭제'}</button></div>`}).join('')}`;
 }
