@@ -611,194 +611,6 @@ function applyImport(){
     location.reload();
   }catch(e){$('#impmsg').textContent='저장 실패: 이 브라우저는 저장 공간을 쓸 수 없습니다.'}
 }
-/* ---------- AI 연계 (공개판·친구 아티팩트판 공통) ----------
-   AIMODE 'copy'  : GitHub 공개판. 분석용 요약을 복사해 Claude 무료/유료 채팅에 붙여 넣는다.
-   AIMODE 'claude': Claude 아티팩트 친구판. 앱 안에서 보는 사람 계정의 Claude(sample)로 분석·변환한다.
-   빌드 스크립트가 아래 AIMODE 값을 바꾼다. */
-const AIMODE='copy';
-let SMP=null,SMPL=null,aiW=8,aiOut=null,aiCtl=null,aiErr='',aiQ='',acvPend=null,acvMsg='',acvCtl=null,acvT='';
-async function aiBoot(){
-  if(AIMODE!=='claude')return;
-  if(SMP){try{SMPL=await SMP.limits()}catch(e){SMPL=null}}
-  try{const v=JSON.parse(localStorage.getItem('gl:aiLast')||'null');if(v&&v.text)aiOut=v}catch(e){}
-  if(!hasFocus&&(tab==='prof'||tab==='set'))render();
-}
-const aiTier=()=>SMPL&&Array.isArray(SMPL.modelTiers)&&!SMPL.modelTiers.includes('complex')?'default':'complex';
-const TIERN={complex:'최상위 모델',default:'기본 모델',quick:'빠른 모델'};
-function aiErrText(e){
-  const c=e&&e.code;
-  return c==='not_granted'?'Claude 사용을 허용하지 않아 실행하지 않았습니다. 다시 누르면 다시 물어봅니다(이 화면을 새로 연 뒤).':
-    c==='rate_limited'||c==='queue_overflow'?'Claude 사용 한도에 걸렸거나 요청이 몰렸습니다. 잠시 뒤 다시 해 보세요. 유료 요금제는 한도가 더 넉넉합니다.':
-    c==='prompt_too_large'?'기록이 너무 길어 보낼 수 없습니다. 기간을 줄여 주세요.':
-    c==='sampling_disabled'||c==='capability_disabled'||c==='capability_removed'||c==='not_declared'?'이 계정이나 화면에서는 앱 안 Claude를 쓸 수 없습니다. 아래 "요약 복사"로 채팅에 붙여 넣어 주세요.':
-    c==='session_expired'?'로그인이 만료되었습니다. 새로고침 후 다시 해 보세요.':
-    c==='refused'?'Claude가 이 요청에 답하지 않았습니다.':
-    '응답을 받지 못했습니다'+(c?' ('+c+')':'')+'. 잠시 뒤 다시 해 보세요.';
-}
-/* 기간 내 기록을 짧은 텍스트로 압축 */
-function aiDigest(wk){
-  const all=Object.assign({},LOGS);if(cur&&cur.date&&cur.exercises&&stats(cur).done>0)all[cur.date]=cur;
-  const today=todayStr(),from=wk?addDays(monday(today),-7*(wk-1)):'0000-00-00';
-  const ds=Object.keys(all).filter(d=>d>=from&&d<=today&&all[d]&&all[d].exercises&&stats(all[d]).done>0).sort();
-  if(!ds.length)return'';
-  const L=[],K4=['bench','squat','dead','ohp'],P=PROGS[S.progId],md=d=>d.slice(5);
-  L.push('[짐로그 운동 기록 요약] '+ds[0]+' ~ '+ds[ds.length-1]+' · 운동 '+ds.length+'일');
-  if(K4.some(k=>+S.orm[k]))L.push('설정 1RM(kg): '+K4.map(k=>LN[k]+' '+(+S.orm[k]?nf(S.orm[k]):'-')).join(' / '));
-  if(P)L.push('프로그램: '+P.name);
-  if(+S.goal3)L.push('3대(벤치·스쿼트·데드) 합계 목표: '+nf(S.goal3)+'kg');
-  const rec=K4.map(k=>{const r=(PROFILE.records||[]).filter(x=>x.lift===k).sort((a,b)=>a.date<b.date?-1:1).pop();return r?LN[k]+' '+nf(r.kg)+'('+r.date+')':''}).filter(Boolean);
-  if(rec.length)L.push('최신 1RM 기록: '+rec.join(' / '));
-  const ws=weightSeries().filter(x=>x.d>=from);
-  if(ws.length)L.push('체중: '+nf(ws[0].y)+'kg('+ws[0].d+')'+(ws.length>1?' → '+nf(ws[ws.length-1].y)+'kg('+ws[ws.length-1].d+')':''));
-  const ib=ibSeries().filter(x=>x.fatPct||x.muscle).pop();
-  if(ib)L.push('인바디('+ib.date+'): '+[ib.weight?'체중 '+nf(ib.weight)+'kg':'',ib.muscle?'골격근량 '+nf(ib.muscle)+'kg':'',ib.fatPct?'체지방률 '+nf(ib.fatPct)+'%':''].filter(Boolean).join(', '));
-  L.push('','# 주별 (월요일 시작 · 운동일 · 세트 · 볼륨)');
-  for(let m=monday(ds[0]);m<=today;m=addDays(m,7)){const a=weekAgg(m);L.push(m+' · '+a.days+'일 · '+a.sets+'세트 · '+nf(a.vol)+'kg')}
-  const ex={};
-  ds.forEach(d=>(all[d].exercises||[]).forEach(e=>{
-    if(e.check)return;const n=cleanName(e.name||'');if(!n)return;
-    const ss=(e.sets||[]).filter(q=>q.done&&q.type!=='warm'&&+q.r>0);if(!ss.length)return;
-    const o=ex[n]||(ex[n]={n,sets:0,ses:[],best:null});o.sets+=ss.length;
-    const g=[];ss.forEach(q=>{const k=(+q.w?nf(+q.w):'맨몸')+'×'+nf(+q.r),l=g[g.length-1];if(l&&l.k===k)l.c++;else g.push({k,c:1})});
-    const rir=ss.map(q=>q.rir).filter(v=>v!==''&&v!=null);
-    o.ses.push(md(d)+': '+g.map(x=>x.k+(x.c>1?'×'+x.c:'')).join(', ')+(rir.length?' (RIR '+rir.join('/')+')':'')+(ss.some(q=>q.type==='fail')?' 실패세트':''));
-    ss.forEach(q=>{if(+q.w){const v=e1(q.w,q.r,q.rir);if(!o.best||v>o.best.e)o.best={e:v,d}}});
-  }));
-  const top=Object.values(ex).sort((a,b)=>b.sets-a.sets),main=top.slice(0,12),rest=top.slice(12);
-  L.push('','# 종목별 (무게kg×반복×세트수, 웜업 제외)');
-  main.forEach(o=>{L.push('- '+o.n+' · '+o.ses.length+'회 · '+o.sets+'세트'+(o.best?' · 최고 e1RM '+nf(Math.round(o.best.e*10)/10)+'kg('+md(o.best.d)+')':''));o.ses.slice(-12).forEach(x=>L.push('  '+x))});
-  if(rest.length)L.push('- 그 밖: '+rest.map(o=>o.n+' '+o.sets+'세트').join(', '));
-  const notes=[];
-  ds.forEach(d=>{const l=all[d];if(l.note&&String(l.note).trim())notes.push(md(d)+' '+String(l.note).trim().replace(/\s+/g,' ').slice(0,80));
-    (l.exercises||[]).forEach(e=>{if(e.memo&&String(e.memo).trim())notes.push(md(d)+' ['+cleanName(e.name)+'] '+String(e.memo).trim().replace(/\s+/g,' ').slice(0,60))})});
-  if(notes.length){L.push('','# 메모');notes.slice(-15).forEach(x=>L.push('- '+x))}
-  return L.join('\n');
-}
-function aiAsk(){
-  return '위는 내 웨이트 트레이닝 기록이다. 다음을 기록 근거로 짧고 구체적으로 말해 줘.\n'+
-    '1) 종목별 추이와 정체·하락 구간\n2) 부위별 볼륨 균형(부족하거나 과한 곳)\n3) 1RM 대비 실제 수행 강도와 RIR이 적절한지\n4) 다음 4주에 바꿀 것 3가지\n'+
-    (+S.goal3?'5) 3대 합계 '+nf(S.goal3)+'kg 목표까지 현실적인 경로\n':'')+
-    '기록에 없는 것은 추측하지 말고 필요하면 나에게 물어봐. 한국어로 답해 줘.';
-}
-function aiCard(){
-  const opts=[[4,'최근 4주'],[8,'최근 8주'],[12,'최근 12주'],[0,'전체']].map(([v,t])=>`<option value="${v}" ${aiW===v?'selected':''}>${t}</option>`).join('');
-  const dg=aiDigest(aiW),len=dg.length,live=AIMODE==='claude'&&SMP;
-  let h=`<div class="card"><span class="tag">Claude로 기록 분석</span>
-  <div class="row" style="margin-top:8px;flex-wrap:wrap"><select id="aiw" style="flex:1 1 120px">${opts}</select>${live?`<button class="btn pri" data-a="aigo" ${aiCtl||!len?'disabled':''}>분석받기</button>`:''}<button class="btn" data-a="aidg" ${len?'':'disabled'}>요약 복사</button></div>
-  <div class="mute" style="margin-top:6px">${len?`요약 ${len.toLocaleString()}자${len>12000?' · 길어서 무료 채팅에서 잘릴 수 있습니다. 기간을 줄여 보세요.':''}`:'이 기간에 ✓한 운동 기록이 없습니다.'}</div>`;
-  if(live)h+=`<label class="f" style="margin-top:8px">특별히 궁금한 점 (선택)</label><input id="aiq" value="${esc(aiQ)}" placeholder="예) 벤치가 3주째 그대로인데 왜일까?" autocomplete="off">
-  <div class="mute" style="margin-top:6px">내 Claude 계정 사용량으로 답합니다. 처음 한 번 허용할지 묻습니다. 유료 요금제는 더 높은 등급 모델과 넉넉한 한도로 답합니다.</div>`;
-  else h+=`<div class="mute" style="margin-top:6px">복사한 뒤 claude.ai(무료도 됨) 새 채팅에 붙여 넣으면 분석해 줍니다. 기록은 복사할 때만 이 기기 밖으로 나갑니다.</div>`;
-  h+=`<textarea id="aibox2" hidden readonly style="margin-top:6px;min-height:160px"></textarea>`;
-  if(live&&(aiCtl||aiOut||aiErr))h+=`<div class="panel" style="line-height:1.55"><div id="aiout" style="white-space:pre-wrap">${aiCtl&&!(aiOut&&aiOut.live)?'생각하는 중… (보통 10초~1분)':esc(aiOut?aiOut.text:'')}</div>
-    ${aiErr?`<div style="color:var(--warn);margin-top:6px">${esc(aiErr)}</div>`:''}
-    <div class="mute" id="aimeta" style="margin-top:6px">${aiOut&&aiOut.at&&!aiCtl?new Date(aiOut.at).toLocaleString('ko-KR')+' · '+(TIERN[aiOut.tier]||'')+(aiOut.tier&&aiOut.tier!=='complex'?' (계정 요금제에 따라 정해짐)':''):''}</div>
-    ${aiCtl?'<div class="row" style="margin-top:6px"><button class="btn" data-a="aistop">멈추기</button></div>':''}</div>`;
-  return h+'</div>';
-}
-function aiCopy(btn,txt,boxId){
-  const bx=$('#'+boxId);
-  (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>{btn.textContent='복사됨'})
-    .catch(()=>{if(bx){bx.hidden=false;bx.value=txt;bx.focus();bx.select()}btn.textContent='아래 글을 길게 눌러 복사'});
-}
-async function aiRun(){
-  if(!SMP||aiCtl)return;
-  const dg=aiDigest(aiW);if(!dg)return;
-  const q=String(aiQ||'').trim();
-  aiCtl=new AbortController();aiErr='';aiOut={text:'',live:false};render();
-  const setOut=t=>{aiOut.text=t;aiOut.live=true;const el=$('#aiout');if(el)el.textContent=t};
-  try{
-    const r=await SMP(dg+'\n\n'+aiAsk()+(q?'\n특히 이 질문에 먼저 답해 줘: '+q:'')+'\n\n형식: 소제목은 한 줄 텍스트로, 마크다운 표나 # 기호는 쓰지 말 것. 800자~1500자.',
-      {modelTier:aiTier(),signal:aiCtl.signal,cache:false,onText:({text})=>setOut(text.replace(/\*\*/g,''))});
-    aiOut={text:r.text.replace(/\*\*/g,''),tier:r.modelTierApplied,at:Date.now(),w:aiW};
-    if(r.truncated)aiErr='답변이 길어서 중간에 끊겼습니다.';
-    try{localStorage.setItem('gl:aiLast',JSON.stringify(aiOut))}catch(e){}
-  }catch(e){
-    const keep=e&&e.text?e.text.replace(/\*\*/g,''):'';aiOut=keep?{text:keep,at:Date.now()}:null;
-    aiErr=e&&e.code==='cancelled'?'멈췄습니다.':aiErrText(e);
-  }
-  aiCtl=null;render();
-}
-/* ---------- AI로 프로그램 변환 (claude 모드) ---------- */
-function acvHtml(){
-  if(AIMODE!=='claude'||!SMP)return'';
-  const img=SMPL&&SMPL.images;
-  return`<div class="panel"><b>Claude로 변환해서 가져오기</b>
-  <div class="mute" style="margin-top:4px">아무 양식의 프로그램 파일(엑셀·CSV·텍스트${img?'·사진':''})을 고르거나 아래에 붙여 넣으면 Claude가 샘플 양식으로 바꿔 가져옵니다. 내 Claude 계정 사용량을 씁니다.</div>
-  <input type="file" id="acvf" style="margin-top:6px" accept=".xlsx,.xls,.xlsm,.csv,.txt${img?','+(img.mediaTypes||['image/jpeg','image/png']).join(','):''}">
-  <textarea id="acvt" placeholder="또는 프로그램 내용을 붙여 넣기 (예: 1주차 월 벤치 5x5 75% …)" style="margin-top:6px;min-height:90px">${esc(acvT)}</textarea>
-  <div class="row" style="margin-top:6px"><button class="btn pri" data-a="acvgo" ${acvCtl?'disabled':''}>변환하기</button>${acvCtl?'<button class="btn" data-a="acvstop">멈추기</button>':''}</div>
-  <div class="mute" id="acvmsg" style="margin-top:6px">${acvMsg}</div></div>`;
-}
-async function acvRun(){
-  if(!SMP||acvCtl)return;
-  const f=($('#acvf')||{}).files,file=f&&f[0],paste=String(acvT||'').trim();
-  if(!file&&!paste){acvMsg='파일을 고르거나 내용을 붙여 넣어 주세요.';render();return}
-  let src='',images=null,name=file?file.name.replace(/\.[^.]+$/,''):'Claude 변환 프로그램';
-  try{
-    if(file&&/^image\//.test(file.type)){images=[file];src='(첨부한 사진에 있는 프로그램)'}
-    else if(file&&/\.(xlsx|xls|xlsm)$/i.test(file.name)){
-      await loadXlsx();const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
-      src=wb.SheetNames.map(sn=>'### 시트: '+sn+'\n'+XLSX.utils.sheet_to_csv(wb.Sheets[sn],{blankrows:false}).replace(/,+$/gm,'')).join('\n\n');
-    }else if(file){const buf=await file.arrayBuffer();src=new TextDecoder('utf-8').decode(buf);if(src.includes('\ufffd')){try{src=new TextDecoder('euc-kr').decode(buf)}catch(e){}}}
-    if(paste)src=(src?src+'\n\n':'')+paste;
-  }catch(e){acvMsg='파일을 읽지 못했습니다: '+esc(e.message||e);render();return}
-  let cut='';if(src.length>60000){src=src.slice(0,60000);cut=' (원본이 길어 앞부분 6만 자만 보냈습니다)'}
-  const K4=['bench','squat','dead','ohp'];
-  const prompt=`아래 원본 운동 프로그램을 CSV로 옮겨라. 출력은 CSV만 쓴다(설명·코드블록 표시 없이).
-첫 줄은 정확히: 주차,Day,Day 이름,운동,1RM 종목,세트,반복,%1RM,메모
-규칙:
-- 한 줄 = 같은 %1RM·반복으로 하는 세트 묶음. 세트마다 %나 반복이 다르면 같은 운동을 여러 줄로 나눈다.
-- 주차는 1부터 숫자, Day는 그 주의 몇 번째 운동일인지 1~7 숫자. 주차 구분이 없으면 모두 1주차.
-- 벤치프레스·스쿼트·데드리프트·오버헤드(밀리터리) 프레스는 1RM 종목에 벤치/스쿼트/데드/OHP 중 하나, %1RM은 숫자(예: 75), 반복은 숫자 하나.
-- kg로 적힌 메인 종목은 내 1RM(${K4.map(k=>LN[k]+' '+(+S.orm[k]?nf(S.orm[k]):'모름')).join(', ')}kg)으로 나눠 %1RM으로 바꾼다. 1RM을 모르면 1RM 종목을 비우고 보조 운동처럼 적고 메모에 원래 무게를 적는다.
-- 그 밖의 운동은 1RM 종목과 %1RM을 비우고 세트(숫자)와 반복(예: 8~12)만 적는다.
-- 웜업 세트는 빼고, 설명·팁은 메모 칸에 짧게. 쉼표가 들어가는 칸은 큰따옴표로 감싼다.
-- 원본에서 읽을 수 없는 부분은 지어내지 말고 건너뛴다.
-원본:
-<<<
-${src}
->>>`;
-  acvCtl=new AbortController();acvMsg='Claude가 변환하는 중… (보통 20초~2분)'+cut;acvPend=null;render();
-  try{
-    const r=await SMP(prompt,{modelTier:'default',signal:acvCtl.signal,images:images||undefined});
-    let t=r.text.replace(/```[a-z]*\n?/gi,'').replace(/```/g,'');const i=t.indexOf('주차');if(i>0)t=t.slice(t.lastIndexOf('\n',i)+1);
-    const prog=parseTemplate(csvRows(t.trim()),name);
-    if(!prog)throw{code:'_parse'};
-    prog.name=name;acvPend=prog;const ws=wkeys(prog);
-    acvMsg=`변환 결과: ${ws.length}주 · 주 ${prog.weeks[ws[0]].d.length}일 (${prog.weeks[ws[0]].d.map(D=>esc(D.n)).join(' / ')}) · 1RM 연동 세트 ${prog.sets}개 · 보조 ${prog.acc}줄${r.truncated?'<br>주의: 답변이 길어 끝부분이 잘렸을 수 있습니다.':''}${prog.warn.length?'<br>주의: '+prog.warn.slice(0,6).map(esc).join(' / '):''}${cut}
-      <div class="row" style="margin-top:6px"><button class="btn pri" data-a="acvok">이대로 가져오기</button><button class="btn" data-a="acvno">취소</button></div><div class="mute" style="margin-top:4px">가져온 뒤 '편집'에서 고칠 수 있습니다.</div>`;
-  }catch(e){acvMsg=e&&e.code==='_parse'?'Claude 답을 양식으로 읽지 못했습니다. 다시 시도하거나 내용을 조금 나눠서 넣어 보세요.':e&&e.code==='cancelled'?'멈췄습니다.':aiErrText(e)}
-  acvCtl=null;render();
-}
-/* ---------- 프로그램 불러오는 법 (설정 탭 안내) ---------- */
-function progHelp(){
-  const live=AIMODE==='claude';
-  const steps=live?[
-    '설정 탭에서 <b>내 1RM</b>부터 입력합니다. kg로 적힌 프로그램을 내 1RM 대비 %로 바꿀 때 씁니다.',
-    '인터넷에서 받은 엑셀처럼 <b>아무 양식</b>이면: 아래 <b>Claude로 변환해서 가져오기</b>에 파일(엑셀·CSV·텍스트·사진)을 고르거나 내용을 붙여 넣고 <b>변환하기</b>를 누릅니다. 내 Claude 계정 사용량을 씁니다.',
-    '미리보기(몇 주·며칠, Day 이름, 경고)를 확인하고 <b>이대로 가져오기</b>를 누릅니다.',
-    '이미 <b>샘플 양식</b>대로 된 엑셀·CSV는 위 <b>엑셀·CSV 프로그램 가져오기</b>로 바로 올리면 됩니다(Claude를 쓰지 않음).',
-    '가져온 뒤 <b>이 프로그램 사용</b>을 누르고, 아래 <b>시작일</b>을 1주차 첫 운동일로 맞춥니다.',
-    '틀린 곳은 프로그램 목록의 <b>편집</b>에서 고칩니다.'
-  ]:[
-    '설정 탭에서 <b>내 1RM</b>부터 입력합니다.',
-    '이미 <b>샘플 양식</b>대로 된 엑셀·CSV면 위 <b>엑셀·CSV 프로그램 가져오기</b>로 바로 올립니다.',
-    '인터넷에서 받은 엑셀처럼 <b>아무 양식</b>이면: <b>샘플 양식 받기</b>와 <b>AI에 줄 문구 복사</b>를 누른 뒤, claude.ai(무료도 됨) 새 채팅에 원래 파일·샘플 양식·복사한 문구를 같이 올립니다. Claude가 준 엑셀을 위에서 가져옵니다.',
-    '가져온 뒤 <b>이 프로그램 사용</b>을 누르고, 아래 <b>시작일</b>을 1주차 첫 운동일로 맞춥니다.',
-    '틀린 곳은 프로그램 목록의 <b>편집</b>에서 고칩니다.'
-  ];
-  const notes=[
-    'Day는 시작일부터 하루씩 이어집니다(시작일이 월요일이면 월=Day 1, 화=Day 2 …). 월·수·금처럼 사이에 쉬는 날이 있는 프로그램은 오늘 탭 <b>프로그램·주차·Day 변경</b>에서 그날 할 Day를 고르세요.',
-    '1RM 칸에 숫자를 넣으면 무게가 계산되는 엑셀은 계산된 결과(만든 사람 1RM 기준 무게)만 읽힙니다. % 칸이 없으면 내 1RM으로 다시 나눠 %로 바꿉니다.',
-    '트레이닝 맥스(TM) 기준 프로그램은 설정의 1RM 칸에 TM을 넣고 쓰세요. RPE로만 정한 종목은 무게 없이 세트×반복으로 들어옵니다.',
-    live?'파일이 아주 길면 앞부분(약 6만 자)만 변환합니다. 셀 병합·색으로 구분한 표는 Day·주차가 섞일 수 있으니 미리보기를 꼭 확인하세요.':'셀 병합·색으로 구분한 표는 AI가 Day·주차를 섞을 수 있으니 가져온 뒤 확인하세요.'
-  ];
-  return`<details class="panel"><summary><b>프로그램 불러오는 법</b></summary>
-  <ol style="margin:8px 0 0;padding-left:20px;display:grid;gap:6px">${steps.map(x=>`<li class="mute" style="font-size:14px">${x}</li>`).join('')}</ol>
-  <div class="mute" style="margin-top:8px"><b>알아 둘 점</b></div>
-  <ul style="margin:4px 0 0;padding-left:20px;display:grid;gap:4px">${notes.map(x=>`<li class="mute" style="font-size:13px">${x}</li>`).join('')}</ul></details>`;
-}
 function vHist(){
   const ds=Object.keys(LOGS).sort().reverse();
   if(!ds.length)return`<div class="card mute">아직 기록이 없습니다. 오늘 탭에서 세트를 ✓ 하면 여기에 쌓입니다.</div>`;
@@ -1149,6 +961,195 @@ function parseXlsx(buf,fname){
   if(!sets)throw new Error("%1RM 수식으로 된 세트를 찾지 못했습니다. 위 '샘플 양식 받기'로 받은 양식대로 정리해서 올려 주세요.");
   const out={id:'p'+Date.now().toString(36),name:fname.replace(/\.(xlsx|xlsm)$/i,''),weeks,orm,warn,sets};cleanProg(out);return out;
 }
+/* ---------- AI 연계 (공개판·친구 아티팩트판 공통) ----------
+   AIMODE 'copy'  : GitHub 공개판. 분석용 요약을 복사해 Claude 무료/유료 채팅에 붙여 넣는다.
+   AIMODE 'claude': Claude 아티팩트 친구판. 앱 안에서 보는 사람 계정의 Claude(sample)로 분석·변환한다.
+   빌드 스크립트가 아래 AIMODE 값을 바꾼다. */
+const AIMODE='copy';
+let SMP=null,SMPL=null,aiW=8,aiOut=null,aiCtl=null,aiErr='',aiQ='',acvPend=null,acvMsg='',acvCtl=null,acvT='';
+async function aiBoot(){
+  if(AIMODE!=='claude')return;
+  if(SMP){try{SMPL=await SMP.limits()}catch(e){SMPL=null}}
+  try{const v=JSON.parse(localStorage.getItem('gl:aiLast')||'null');if(v&&v.text)aiOut=v}catch(e){}
+  if(!hasFocus&&(tab==='prof'||tab==='set'))render();
+}
+const aiTier=()=>SMPL&&Array.isArray(SMPL.modelTiers)&&!SMPL.modelTiers.includes('complex')?'default':'complex';
+const TIERN={complex:'최상위 모델',default:'기본 모델',quick:'빠른 모델'};
+function aiErrText(e){
+  const c=e&&e.code;
+  return c==='not_granted'?'Claude 사용을 허용하지 않아 실행하지 않았습니다. 다시 누르면 다시 물어봅니다(이 화면을 새로 연 뒤).':
+    c==='rate_limited'||c==='queue_overflow'?'Claude 사용 한도에 걸렸거나 요청이 몰렸습니다. 잠시 뒤 다시 해 보세요. 유료 요금제는 한도가 더 넉넉합니다.':
+    c==='prompt_too_large'?'기록이 너무 길어 보낼 수 없습니다. 기간을 줄여 주세요.':
+    c==='sampling_disabled'||c==='capability_disabled'||c==='capability_removed'||c==='not_declared'?'이 계정이나 화면에서는 앱 안 Claude를 쓸 수 없습니다. 아래 "요약 복사"로 채팅에 붙여 넣어 주세요.':
+    c==='session_expired'?'로그인이 만료되었습니다. 새로고침 후 다시 해 보세요.':
+    c==='refused'?'Claude가 이 요청에 답하지 않았습니다.':
+    '응답을 받지 못했습니다'+(c?' ('+c+')':'')+'. 잠시 뒤 다시 해 보세요.';
+}
+/* 기간 내 기록을 짧은 텍스트로 압축 */
+function aiDigest(wk){
+  const all=Object.assign({},LOGS);if(cur&&cur.date&&cur.exercises&&stats(cur).done>0)all[cur.date]=cur;
+  const today=todayStr(),from=wk?addDays(monday(today),-7*(wk-1)):'0000-00-00';
+  const ds=Object.keys(all).filter(d=>d>=from&&d<=today&&all[d]&&all[d].exercises&&stats(all[d]).done>0).sort();
+  if(!ds.length)return'';
+  const L=[],K4=['bench','squat','dead','ohp'],P=PROGS[S.progId],md=d=>d.slice(5);
+  L.push('[짐로그 운동 기록 요약] '+ds[0]+' ~ '+ds[ds.length-1]+' · 운동 '+ds.length+'일');
+  if(K4.some(k=>+S.orm[k]))L.push('설정 1RM(kg): '+K4.map(k=>LN[k]+' '+(+S.orm[k]?nf(S.orm[k]):'-')).join(' / '));
+  if(P)L.push('프로그램: '+P.name);
+  if(+S.goal3)L.push('3대(벤치·스쿼트·데드) 합계 목표: '+nf(S.goal3)+'kg');
+  const rec=K4.map(k=>{const r=(PROFILE.records||[]).filter(x=>x.lift===k).sort((a,b)=>a.date<b.date?-1:1).pop();return r?LN[k]+' '+nf(r.kg)+'('+r.date+')':''}).filter(Boolean);
+  if(rec.length)L.push('최신 1RM 기록: '+rec.join(' / '));
+  const ws=weightSeries().filter(x=>x.d>=from);
+  if(ws.length)L.push('체중: '+nf(ws[0].y)+'kg('+ws[0].d+')'+(ws.length>1?' → '+nf(ws[ws.length-1].y)+'kg('+ws[ws.length-1].d+')':''));
+  const ib=ibSeries().filter(x=>x.fatPct||x.muscle).pop();
+  if(ib)L.push('인바디('+ib.date+'): '+[ib.weight?'체중 '+nf(ib.weight)+'kg':'',ib.muscle?'골격근량 '+nf(ib.muscle)+'kg':'',ib.fatPct?'체지방률 '+nf(ib.fatPct)+'%':''].filter(Boolean).join(', '));
+  L.push('','# 주별 (월요일 시작 · 운동일 · 세트 · 볼륨)');
+  for(let m=monday(ds[0]);m<=today;m=addDays(m,7)){const a=weekAgg(m);L.push(m+' · '+a.days+'일 · '+a.sets+'세트 · '+nf(a.vol)+'kg')}
+  const ex={};
+  ds.forEach(d=>(all[d].exercises||[]).forEach(e=>{
+    if(e.check)return;const n=cleanName(e.name||'');if(!n)return;
+    const ss=(e.sets||[]).filter(q=>q.done&&q.type!=='warm'&&+q.r>0);if(!ss.length)return;
+    const o=ex[n]||(ex[n]={n,sets:0,ses:[],best:null});o.sets+=ss.length;
+    const g=[];ss.forEach(q=>{const k=(+q.w?nf(+q.w):'맨몸')+'×'+nf(+q.r),l=g[g.length-1];if(l&&l.k===k)l.c++;else g.push({k,c:1})});
+    const rir=ss.map(q=>q.rir).filter(v=>v!==''&&v!=null);
+    o.ses.push(md(d)+': '+g.map(x=>x.k+(x.c>1?'×'+x.c:'')).join(', ')+(rir.length?' (RIR '+rir.join('/')+')':'')+(ss.some(q=>q.type==='fail')?' 실패세트':''));
+    ss.forEach(q=>{if(+q.w){const v=e1(q.w,q.r,q.rir);if(!o.best||v>o.best.e)o.best={e:v,d}}});
+  }));
+  const top=Object.values(ex).sort((a,b)=>b.sets-a.sets),main=top.slice(0,12),rest=top.slice(12);
+  L.push('','# 종목별 (무게kg×반복×세트수, 웜업 제외)');
+  main.forEach(o=>{L.push('- '+o.n+' · '+o.ses.length+'회 · '+o.sets+'세트'+(o.best?' · 최고 e1RM '+nf(Math.round(o.best.e*10)/10)+'kg('+md(o.best.d)+')':''));o.ses.slice(-12).forEach(x=>L.push('  '+x))});
+  if(rest.length)L.push('- 그 밖: '+rest.map(o=>o.n+' '+o.sets+'세트').join(', '));
+  const notes=[];
+  ds.forEach(d=>{const l=all[d];if(l.note&&String(l.note).trim())notes.push(md(d)+' '+String(l.note).trim().replace(/\s+/g,' ').slice(0,80));
+    (l.exercises||[]).forEach(e=>{if(e.memo&&String(e.memo).trim())notes.push(md(d)+' ['+cleanName(e.name)+'] '+String(e.memo).trim().replace(/\s+/g,' ').slice(0,60))})});
+  if(notes.length){L.push('','# 메모');notes.slice(-15).forEach(x=>L.push('- '+x))}
+  return L.join('\n');
+}
+function aiAsk(){
+  return '위는 내 웨이트 트레이닝 기록이다. 다음을 기록 근거로 짧고 구체적으로 말해 줘.\n'+
+    '1) 종목별 추이와 정체·하락 구간\n2) 부위별 볼륨 균형(부족하거나 과한 곳)\n3) 1RM 대비 실제 수행 강도와 RIR이 적절한지\n4) 다음 4주에 바꿀 것 3가지\n'+
+    (+S.goal3?'5) 3대 합계 '+nf(S.goal3)+'kg 목표까지 현실적인 경로\n':'')+
+    '기록에 없는 것은 추측하지 말고 필요하면 나에게 물어봐. 한국어로 답해 줘.';
+}
+function aiCard(){
+  const opts=[[4,'최근 4주'],[8,'최근 8주'],[12,'최근 12주'],[0,'전체']].map(([v,t])=>`<option value="${v}" ${aiW===v?'selected':''}>${t}</option>`).join('');
+  const dg=aiDigest(aiW),len=dg.length,live=AIMODE==='claude'&&SMP;
+  let h=`<div class="card"><span class="tag">Claude로 기록 분석</span>
+  <div class="row" style="margin-top:8px;flex-wrap:wrap"><select id="aiw" style="flex:1 1 120px">${opts}</select>${live?`<button class="btn pri" data-a="aigo" ${aiCtl||!len?'disabled':''}>분석받기</button>`:''}<button class="btn" data-a="aidg" ${len?'':'disabled'}>요약 복사</button></div>
+  <div class="mute" style="margin-top:6px">${len?`요약 ${len.toLocaleString()}자${len>12000?' · 길어서 무료 채팅에서 잘릴 수 있습니다. 기간을 줄여 보세요.':''}`:'이 기간에 ✓한 운동 기록이 없습니다.'}</div>`;
+  if(live)h+=`<label class="f" style="margin-top:8px">특별히 궁금한 점 (선택)</label><input id="aiq" value="${esc(aiQ)}" placeholder="예) 벤치가 3주째 그대로인데 왜일까?" autocomplete="off">
+  <div class="mute" style="margin-top:6px">내 Claude 계정 사용량으로 답합니다. 처음 한 번 허용할지 묻습니다. 유료 요금제는 더 높은 등급 모델과 넉넉한 한도로 답합니다.</div>`;
+  else h+=`<div class="mute" style="margin-top:6px">복사한 뒤 claude.ai(무료도 됨) 새 채팅에 붙여 넣으면 분석해 줍니다. 기록은 복사할 때만 이 기기 밖으로 나갑니다.</div>`;
+  h+=`<textarea id="aibox2" hidden readonly style="margin-top:6px;min-height:160px"></textarea>`;
+  if(live&&(aiCtl||aiOut||aiErr))h+=`<div class="panel" style="line-height:1.55"><div id="aiout" style="white-space:pre-wrap">${aiCtl&&!(aiOut&&aiOut.live)?'생각하는 중… (보통 10초~1분)':esc(aiOut?aiOut.text:'')}</div>
+    ${aiErr?`<div style="color:var(--warn);margin-top:6px">${esc(aiErr)}</div>`:''}
+    <div class="mute" id="aimeta" style="margin-top:6px">${aiOut&&aiOut.at&&!aiCtl?new Date(aiOut.at).toLocaleString('ko-KR')+' · '+(TIERN[aiOut.tier]||'')+(aiOut.tier&&aiOut.tier!=='complex'?' (계정 요금제에 따라 정해짐)':''):''}</div>
+    ${aiCtl?'<div class="row" style="margin-top:6px"><button class="btn" data-a="aistop">멈추기</button></div>':''}</div>`;
+  return h+'</div>';
+}
+function aiCopy(btn,txt,boxId){
+  const bx=$('#'+boxId);
+  (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>{btn.textContent='복사됨'})
+    .catch(()=>{if(bx){bx.hidden=false;bx.value=txt;bx.focus();bx.select()}btn.textContent='아래 글을 길게 눌러 복사'});
+}
+async function aiRun(){
+  if(!SMP||aiCtl)return;
+  const dg=aiDigest(aiW);if(!dg)return;
+  const q=String(aiQ||'').trim();
+  aiCtl=new AbortController();aiErr='';aiOut={text:'',live:false};render();
+  const setOut=t=>{aiOut.text=t;aiOut.live=true;const el=$('#aiout');if(el)el.textContent=t};
+  try{
+    const r=await SMP(dg+'\n\n'+aiAsk()+(q?'\n특히 이 질문에 먼저 답해 줘: '+q:'')+'\n\n형식: 소제목은 한 줄 텍스트로, 마크다운 표나 # 기호는 쓰지 말 것. 800자~1500자.',
+      {modelTier:aiTier(),signal:aiCtl.signal,cache:false,onText:({text})=>setOut(text.replace(/\*\*/g,''))});
+    aiOut={text:r.text.replace(/\*\*/g,''),tier:r.modelTierApplied,at:Date.now(),w:aiW};
+    if(r.truncated)aiErr='답변이 길어서 중간에 끊겼습니다.';
+    try{localStorage.setItem('gl:aiLast',JSON.stringify(aiOut))}catch(e){}
+  }catch(e){
+    const keep=e&&e.text?e.text.replace(/\*\*/g,''):'';aiOut=keep?{text:keep,at:Date.now()}:null;
+    aiErr=e&&e.code==='cancelled'?'멈췄습니다.':aiErrText(e);
+  }
+  aiCtl=null;render();
+}
+/* ---------- AI로 프로그램 변환 (claude 모드) ---------- */
+function acvHtml(){
+  if(AIMODE!=='claude'||!SMP)return'';
+  const img=SMPL&&SMPL.images;
+  return`<div class="panel"><b>Claude로 변환해서 가져오기</b>
+  <div class="mute" style="margin-top:4px">아무 양식의 프로그램 파일(엑셀·CSV·텍스트${img?'·사진':''})을 고르거나 아래에 붙여 넣으면 Claude가 샘플 양식으로 바꿔 가져옵니다. 내 Claude 계정 사용량을 씁니다.</div>
+  <input type="file" id="acvf" style="margin-top:6px" accept=".xlsx,.xls,.xlsm,.csv,.txt${img?','+(img.mediaTypes||['image/jpeg','image/png']).join(','):''}">
+  <textarea id="acvt" placeholder="또는 프로그램 내용을 붙여 넣기 (예: 1주차 월 벤치 5x5 75% …)" style="margin-top:6px;min-height:90px">${esc(acvT)}</textarea>
+  <div class="row" style="margin-top:6px"><button class="btn pri" data-a="acvgo" ${acvCtl?'disabled':''}>변환하기</button>${acvCtl?'<button class="btn" data-a="acvstop">멈추기</button>':''}</div>
+  <div class="mute" id="acvmsg" style="margin-top:6px">${acvMsg}</div></div>`;
+}
+async function acvRun(){
+  if(!SMP||acvCtl)return;
+  const f=($('#acvf')||{}).files,file=f&&f[0],paste=String(acvT||'').trim();
+  if(!file&&!paste){acvMsg='파일을 고르거나 내용을 붙여 넣어 주세요.';render();return}
+  let src='',images=null,name=file?file.name.replace(/\.[^.]+$/,''):'Claude 변환 프로그램';
+  try{
+    if(file&&/^image\//.test(file.type)){images=[file];src='(첨부한 사진에 있는 프로그램)'}
+    else if(file&&/\.(xlsx|xls|xlsm)$/i.test(file.name)){
+      await loadXlsx();const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
+      src=wb.SheetNames.map(sn=>'### 시트: '+sn+'\n'+XLSX.utils.sheet_to_csv(wb.Sheets[sn],{blankrows:false}).replace(/,+$/gm,'')).join('\n\n');
+    }else if(file){const buf=await file.arrayBuffer();src=new TextDecoder('utf-8').decode(buf);if(src.includes('\ufffd')){try{src=new TextDecoder('euc-kr').decode(buf)}catch(e){}}}
+    if(paste)src=(src?src+'\n\n':'')+paste;
+  }catch(e){acvMsg='파일을 읽지 못했습니다: '+esc(e.message||e);render();return}
+  let cut='';if(src.length>60000){src=src.slice(0,60000);cut=' (원본이 길어 앞부분 6만 자만 보냈습니다)'}
+  const K4=['bench','squat','dead','ohp'];
+  const prompt=`아래 원본 운동 프로그램을 CSV로 옮겨라. 출력은 CSV만 쓴다(설명·코드블록 표시 없이).
+첫 줄은 정확히: 주차,Day,Day 이름,운동,1RM 종목,세트,반복,%1RM,메모
+규칙:
+- 한 줄 = 같은 %1RM·반복으로 하는 세트 묶음. 세트마다 %나 반복이 다르면 같은 운동을 여러 줄로 나눈다.
+- 주차는 1부터 숫자, Day는 그 주의 몇 번째 운동일인지 1~7 숫자. 주차 구분이 없으면 모두 1주차.
+- 벤치프레스·스쿼트·데드리프트·오버헤드(밀리터리) 프레스는 1RM 종목에 벤치/스쿼트/데드/OHP 중 하나, %1RM은 숫자(예: 75), 반복은 숫자 하나.
+- kg로 적힌 메인 종목은 내 1RM(${K4.map(k=>LN[k]+' '+(+S.orm[k]?nf(S.orm[k]):'모름')).join(', ')}kg)으로 나눠 %1RM으로 바꾼다. 1RM을 모르면 1RM 종목을 비우고 보조 운동처럼 적고 메모에 원래 무게를 적는다.
+- 그 밖의 운동은 1RM 종목과 %1RM을 비우고 세트(숫자)와 반복(예: 8~12)만 적는다.
+- 웜업 세트는 빼고, 설명·팁은 메모 칸에 짧게. 쉼표가 들어가는 칸은 큰따옴표로 감싼다.
+- 원본에서 읽을 수 없는 부분은 지어내지 말고 건너뛴다.
+원본:
+<<<
+${src}
+>>>`;
+  acvCtl=new AbortController();acvMsg='Claude가 변환하는 중… (보통 20초~2분)'+cut;acvPend=null;render();
+  try{
+    const r=await SMP(prompt,{modelTier:'default',signal:acvCtl.signal,images:images||undefined});
+    let t=r.text.replace(/```[a-z]*\n?/gi,'').replace(/```/g,'');const i=t.indexOf('주차');if(i>0)t=t.slice(t.lastIndexOf('\n',i)+1);
+    const prog=parseTemplate(csvRows(t.trim()),name);
+    if(!prog)throw{code:'_parse'};
+    prog.name=name;acvPend=prog;const ws=wkeys(prog);
+    acvMsg=`변환 결과: ${ws.length}주 · 주 ${prog.weeks[ws[0]].d.length}일 (${prog.weeks[ws[0]].d.map(D=>esc(D.n)).join(' / ')}) · 1RM 연동 세트 ${prog.sets}개 · 보조 ${prog.acc}줄${r.truncated?'<br>주의: 답변이 길어 끝부분이 잘렸을 수 있습니다.':''}${prog.warn.length?'<br>주의: '+prog.warn.slice(0,6).map(esc).join(' / '):''}${cut}
+      <div class="row" style="margin-top:6px"><button class="btn pri" data-a="acvok">이대로 가져오기</button><button class="btn" data-a="acvno">취소</button></div><div class="mute" style="margin-top:4px">가져온 뒤 '편집'에서 고칠 수 있습니다.</div>`;
+  }catch(e){acvMsg=e&&e.code==='_parse'?'Claude 답을 양식으로 읽지 못했습니다. 다시 시도하거나 내용을 조금 나눠서 넣어 보세요.':e&&e.code==='cancelled'?'멈췄습니다.':aiErrText(e)}
+  acvCtl=null;render();
+}
+/* ---------- 프로그램 불러오는 법 (설정 탭 안내) ---------- */
+function progHelp(){
+  const live=AIMODE==='claude';
+  const steps=live?[
+    '설정 탭에서 <b>내 1RM</b>부터 입력합니다. kg로 적힌 프로그램을 내 1RM 대비 %로 바꿀 때 씁니다.',
+    '인터넷에서 받은 엑셀처럼 <b>아무 양식</b>이면: 아래 <b>Claude로 변환해서 가져오기</b>에 파일(엑셀·CSV·텍스트·사진)을 고르거나 내용을 붙여 넣고 <b>변환하기</b>를 누릅니다. 내 Claude 계정 사용량을 씁니다.',
+    '미리보기(몇 주·며칠, Day 이름, 경고)를 확인하고 <b>이대로 가져오기</b>를 누릅니다.',
+    '이미 <b>샘플 양식</b>대로 된 엑셀·CSV는 위 <b>엑셀·CSV 프로그램 가져오기</b>로 바로 올리면 됩니다(Claude를 쓰지 않음).',
+    '가져온 뒤 <b>이 프로그램 사용</b>을 누르고, 아래 <b>시작일</b>을 1주차 첫 운동일로 맞춥니다.',
+    '틀린 곳은 프로그램 목록의 <b>편집</b>에서 고칩니다.'
+  ]:[
+    '설정 탭에서 <b>내 1RM</b>부터 입력합니다.',
+    '이미 <b>샘플 양식</b>대로 된 엑셀·CSV면 위 <b>엑셀·CSV 프로그램 가져오기</b>로 바로 올립니다.',
+    '인터넷에서 받은 엑셀처럼 <b>아무 양식</b>이면: <b>샘플 양식 받기</b>와 <b>AI에 줄 문구 복사</b>를 누른 뒤, claude.ai(무료도 됨) 새 채팅에 원래 파일·샘플 양식·복사한 문구를 같이 올립니다. Claude가 준 엑셀을 위에서 가져옵니다.',
+    '가져온 뒤 <b>이 프로그램 사용</b>을 누르고, 아래 <b>시작일</b>을 1주차 첫 운동일로 맞춥니다.',
+    '틀린 곳은 프로그램 목록의 <b>편집</b>에서 고칩니다.'
+  ];
+  const notes=[
+    'Day는 시작일부터 하루씩 이어집니다(시작일이 월요일이면 월=Day 1, 화=Day 2 …). 월·수·금처럼 사이에 쉬는 날이 있는 프로그램은 오늘 탭 <b>프로그램·주차·Day 변경</b>에서 그날 할 Day를 고르세요.',
+    '1RM 칸에 숫자를 넣으면 무게가 계산되는 엑셀은 계산된 결과(만든 사람 1RM 기준 무게)만 읽힙니다. % 칸이 없으면 내 1RM으로 다시 나눠 %로 바꿉니다.',
+    '트레이닝 맥스(TM) 기준 프로그램은 설정의 1RM 칸에 TM을 넣고 쓰세요. RPE로만 정한 종목은 무게 없이 세트×반복으로 들어옵니다.',
+    live?'파일이 아주 길면 앞부분(약 6만 자)만 변환합니다. 셀 병합·색으로 구분한 표는 Day·주차가 섞일 수 있으니 미리보기를 꼭 확인하세요.':'셀 병합·색으로 구분한 표는 AI가 Day·주차를 섞을 수 있으니 가져온 뒤 확인하세요.'
+  ];
+  return`<details class="panel"><summary><b>프로그램 불러오는 법</b></summary>
+  <ol style="margin:8px 0 0;padding-left:20px;display:grid;gap:6px">${steps.map(x=>`<li class="mute" style="font-size:14px">${x}</li>`).join('')}</ol>
+  <div class="mute" style="margin-top:8px"><b>알아 둘 점</b></div>
+  <ul style="margin:4px 0 0;padding-left:20px;display:grid;gap:4px">${notes.map(x=>`<li class="mute" style="font-size:13px">${x}</li>`).join('')}</ul></details>`;
+}
+
 /* ---------- 파일 저장 ---------- */
 async function saveBin(filename,data){
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type:/\.xlsx$/.test(filename)?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'application/octet-stream'}));a.download=filename;
@@ -1583,6 +1584,9 @@ document.addEventListener('click',e=>{
   else if(a==='ibok'){ibApply()}
   else if(a==='ibno'){ibPend=null;ibMsg='취소했습니다.';render()}
   else if(a==='export'){doExport()}
+  else if(a==='tutok'){lsSet('gl:tutDone',1);render()}
+  else if(a==='impok'){applyImport()}
+  else if(a==='impno'){impData=null;$('#impmsg').textContent='취소했습니다.'}
   else if(a==='aigo'){aiRun()}
   else if(a==='aistop'){if(aiCtl)aiCtl.abort()}
   else if(a==='aidg'){aiCopy(t,aiDigest(aiW)+'\n\n'+aiAsk(),'aibox2')}
@@ -1590,9 +1594,6 @@ document.addEventListener('click',e=>{
   else if(a==='acvstop'){if(acvCtl)acvCtl.abort()}
   else if(a==='acvok'){const p_=acvPend;acvPend=null;acvMsg='';if(p_)storeImported(p_)}
   else if(a==='acvno'){acvPend=null;acvMsg='취소했습니다.';render()}
-  else if(a==='tutok'){lsSet('gl:tutDone',1);render()}
-  else if(a==='impok'){applyImport()}
-  else if(a==='impno'){impData=null;$('#impmsg').textContent='취소했습니다.'}
   else if(a==='auto'){applyPick({date,auto:true})}
   else if(a==='pickok'){picked=ui.pickask;cur=draft(date);ui={};render()}
   else if(a==='pickno'){ui={};render()}
@@ -1680,8 +1681,8 @@ document.addEventListener('change',e=>{
   else if(t.id==='impf'&&t.files&&t.files[0]){readImport(t.files[0])}
   else if(t.id==='bdate'&&t.value){bodyDate=t.value;render()}
   else if(t.id==='start'&&t.value){S.starts=S.starts||{};S.starts[S.progId]=t.value;if(S.progId==='v3')S.start=t.value;saveSettings()}
-  else if(t.id==='goal3'){S.goal3=+t.value||0;saveSettings()}
   else if(t.id==='aiw'){aiW=+t.value;render()}
+  else if(t.id==='goal3'){S.goal3=+t.value||0;saveSettings()}
   else if(t.id==='bar'){S.bar=+t.value||20;saveSettings()}
 });
 function conflictHtml(){return`<div class="card" style="border-color:var(--acc)"><b>다른 탭에서 이 날 기록을 수정했습니다</b><div class="mute" style="margin:4px 0 8px">지금 화면의 편집 내용과 서버 내용이 다릅니다.</div><div class="row"><button class="btn pri" data-a="cfload">서버 내용 불러오기</button><button class="btn" data-a="cfkeep">내 편집 유지</button></div></div>`}
