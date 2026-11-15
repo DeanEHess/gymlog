@@ -174,7 +174,7 @@ const lsDel=k=>{try{localStorage.removeItem(k)}catch(e){}};
 const addDays=(d,n)=>{const x=parseD(d);x.setDate(x.getDate()+n);return fmtD(x)};
 
 let db=null,S=clone(DEF),LOGS={},BODY={},cur=null,date=todayStr(),tab='today',dirty=false,hasFocus=false,picked=null;
-const APPV='web7';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
+const APPV='web8';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
 let ui={},chain=Promise.resolve(),saveT=null,bodyT=null,setT=null,pend=new Set(),bodyDate=date,rest=null,restTick=null;
 
 /* ---------- sync status ---------- */
@@ -193,6 +193,11 @@ function session(d){
   const P=curProg(),ws=wkeys(P),n=dayDiff(startOf(),d);
   if(n<0)return{week:ws[0],day:null,pre:true};
   const wi=Math.floor(n/7),dow=n%7,week=ws[Math.min(ws.length-1,wi)],nd=P.weeks[week].d.length;
+  if(S.dayMode==='seq'){
+    const w0=addDays(startOf(),wi*7);let mx=-1;
+    Object.keys(LOGS).forEach(x=>{if(x<w0||x>=d)return;const L=LOGS[x];if(L&&!L.free&&!L.legacy&&L.week===week&&L.day!=null&&L.setsDone>0&&(!L.progId||L.progId===S.progId))mx=Math.max(mx,L.day)});
+    return{week,day:mx+1<nd?mx+1:null,over:wi+1>ws.length,seq:true};
+  }
   return{week,day:dow<nd?dow:null,over:wi+1>ws.length};
 }
 function build(week,day,prog,d){
@@ -201,12 +206,12 @@ function build(week,day,prog,d){
     const[tag,name]=b.t.includes(':')?b.t.split(/\s*:\s*/):['',b.t];
     const lifts=b.r.filter(r=>r.k);
     if(lifts.length){
-      ex.push({tag,name,lift:lifts[0].k,attempt:tag==='본 시도',np:lifts.length,rest:/보조/.test(tag)?90:150,sets:lifts.map(r=>{
+      ex.push({tag,name:aliasName(name),lift:lifts[0].k,attempt:tag==='본 시도',np:lifts.length,rest:/보조/.test(tag)?90:150,sets:lifts.map(r=>{
         const tw=mround(S.orm[r.k]*r.p);return{tw,tr:r.n,w:tw,r:r.n,rir:'',done:false,note:r.m||''}})});
     }else b.r.forEach(r=>{
       const m=String(r.s||'').match(/^(\d+)\s*×\s*(.+)$/);
-      if(m){const e={tag:'보조B',name:r.l,spec:r.s,note:r.m||'',np:+m[1],rest:60,sets:Array.from({length:+m[1]},()=>({tr:m[2],w:'',r:'',rir:'',done:false}))};applySug(e,d);ex.push(e)}
-      else ex.push({tag:'보조B',name:r.l,spec:r.s,note:r.m||'',np:1,check:true,done:false,sets:[]});
+      if(m){const e={tag:'보조B',name:aliasName(r.l),spec:r.s,note:r.m||'',np:+m[1],rest:60,sets:Array.from({length:+m[1]},()=>({tr:m[2],w:'',r:'',rir:'',done:false}))};applySug(e,d);ex.push(e)}
+      else ex.push({tag:'보조B',name:aliasName(r.l),spec:r.s,note:r.m||'',np:1,check:true,done:false,sets:[]});
     });
   });
   return{progId:prog.id,progName:prog.name,week,day,dayName:D.n,tip:P.tip||'',exercises:ex};
@@ -419,7 +424,7 @@ function setClass(el){
   if(el.querySelector('#start'))return'prog';
   if(/운동 프로그램/.test(t))return'prog';
   if(/현재 1RM/.test(t))return'orm';
-  if(/내 종목/.test(t))return'ex';
+  if(/내 종목|종목 합치기/.test(t))return'ex';
   if(/저장 상태/.test(t))return'status';
   if(/백업|저장됩니다|공유 DB/.test(t))return'backup';
   return'misc';
@@ -440,12 +445,68 @@ function statsHtml(st){
 const LIB=['벤치프레스','인클라인 벤치프레스','덤벨 프레스','인클라인 덤벨 프레스','체스트 프레스','케이블 크로스오버','딥스','클로즈그립 벤치프레스','풀업','랫풀다운','언더그립 랫풀다운','원 암 풀다운','시티드 케이블 로우','바벨 로우','덤벨 로우','스쿼트','프론트 스쿼트','일시정지 스쿼트','레그 프레스','레그 익스텐션','레그 컬','불가리안 스플릿 스쿼트','루마니안 데드리프트','컨벤셔널 데드리프트','힙쓰러스트','밀리터리 프레스','덤벨 숄더 프레스','사이드 레터럴 레이즈','벤트오버 레터럴 레이즈','페이스풀','바벨 컬','인클라인 덤벨 컬','해머 컬','케이블 트라이셉스 푸시다운','오버헤드 트라이셉스 익스텐션','라잉 트라이셉스 익스텐션','카프 레이즈'];
 const norm=s=>cleanName(s).replace(/\s+/g,'').toLowerCase();
 const e1=(w,r,rir)=>{w=+w;r=+r;if(!w||!r)return 0;const x=rir==='4+'?4:(rir===''||rir==null||isNaN(+rir)?0:+rir),n=Math.min(15,r+x);return n<=1?w:w*(1+n/30)};
+const EQP=['덤벨','바벨','케이블','머신','스미스머신','원판','이지바','케틀벨','밴드'];
+function aliasName(n){const a=S.alias&&S.alias[norm(n||'')];return a||n}
+function nameIndex(){
+  const I={},bad=x=>!x||/추가 운동 없음|셋업 큐 점검|밴드 풀어파트/.test(x)||/^SET/.test(x);
+  const add=(x,src)=>{x=cleanName(x);if(bad(x))return;const k=norm(x);const o=I[k]||(I[k]={k,logs:0,prog:false,lib:false,def:false,sp:{}});o.sp[x]=(o.sp[x]||0)+(src==='log'?1:0.01);if(src==='log')o.logs++;else o[src]=true};
+  LIB.forEach(x=>add(x,'lib'));
+  Object.values(PROGS).forEach(G=>Object.values(G.weeks).forEach(P=>P.d.forEach(D=>D.b.forEach(b=>{add(b.t.includes(':')?b.t.split(/\s*:\s*/)[1]:b.t,'prog');b.r.forEach(r=>{if(!r.k)add(r.l,'prog')})}))));
+  Object.values(LOGS).forEach(l=>(l.exercises||[]).forEach(x=>{if(x.name)add(x.name,'log')}));
+  Object.values(S.ex||{}).forEach(d=>add(d.n,'def'));
+  Object.values(I).forEach(o=>{o.n=Object.entries(o.sp).sort((p,q)=>q[1]-p[1])[0][0]});
+  return I;
+}
+function genericOf(I,o){return Object.values(I).find(b=>b!==o&&b.logs>0&&b.k.length>o.k.length&&b.k.endsWith(o.k)&&EQP.includes(b.k.slice(0,b.k.length-o.k.length)))}
 function allNames(){
-  const set=new Set(LIB);const add_=x=>{x=cleanName(x);if(x)set.add(x)};
-  Object.values(PROGS).forEach(G=>Object.values(G.weeks).forEach(P=>P.d.forEach(D=>D.b.forEach(b=>{add_(b.t.includes(':')?b.t.split(/\s*:\s*/)[1]:b.t);b.r.forEach(r=>{if(!r.k)add_(r.l)})}))));
-  Object.values(LOGS).forEach(l=>(l.exercises||[]).forEach(x=>{if(x.name)add_(x.name)}));
-  Object.values(S.ex||{}).forEach(d=>add_(d.n));
-  return[...set].filter(n=>n&&!/추가 운동 없음|셋업 큐 점검|밴드 풀어파트/.test(n)&&!/^SET/.test(n)).sort((a,b)=>a.localeCompare(b,'ko'));
+  const I=nameIndex(),al=S.alias||{};
+  return Object.values(I).filter(o=>!al[o.k]&&!(o.lib&&!o.logs&&!o.prog&&!o.def&&genericOf(I,o))).sort((p,q)=>q.logs-p.logs||p.n.localeCompare(q.n,'ko')).map(o=>o.n);
+}
+function mergeHints(){
+  const I=nameIndex(),al=S.alias||{};
+  return Object.values(I).filter(o=>!al[o.k]&&(o.logs||o.prog)).map(o=>{const g=genericOf(I,o);return g?[o.n,g.n]:null}).filter(Boolean).slice(0,6);
+}
+function putLog(d){
+  const L=LOGS[d];if(!L)return;L.updatedAt=Date.now();(seen[d]||(seen[d]=new Set())).add(L.updatedAt);
+  if(cur&&cur.date===d){cur=clone(L);dirty=false}
+  if(!db){lsSet('gl:log:'+d,L);return}
+  const snap=clone(L);chain=chain.then(()=>db.doc('logs/'+d).set(snap)).then(()=>setSync('ok')).catch(e=>setSync('err',e));
+}
+function mergeEx(src,dst){
+  flushNow();
+  const ks=norm(src),kd=norm(dst);if(!ks||!kd||ks===kd)return 0;
+  if(cur&&LOGS[cur.date])LOGS[cur.date]=clone(cur);
+  const ch=new Set();
+  Object.keys(LOGS).forEach(d=>(LOGS[d].exercises||[]).forEach(e=>{if(e.name&&norm(e.name)===ks){e.name=dst;ch.add(d)}if(e.orig&&norm(e.orig)===ks){e.orig=dst;ch.add(d)}}));
+  if(cur&&!LOGS[cur.date])cur.exercises.forEach(e=>{if(e.name&&norm(e.name)===ks)e.name=dst});
+  if(ch.size){let bE=0,bW=0,any=false;
+    Object.keys(LOGS).sort().forEach(d=>{const L=LOGS[d];let ses=false;
+      (L.exercises||[]).forEach(e=>{if(norm(e.name||'')!==kd||e.check||e.attempt)return;
+        (e.sets||[]).forEach(q=>{const w=+q.w,r=+q.r,ok=q.done&&q.type!=='warm'&&w&&r;
+          if(!L.legacy){let nw=null;if(ok&&any){if(w>bW+1e-9)nw='무게 PR';else if(e1(w,r,q.rir)>bE+.05)nw='e1RM PR'}
+            if((q.pr||null)!==nw){if(nw)q.pr=nw;else delete q.pr;ch.add(d)}}
+          if(ok){bW=Math.max(bW,w);bE=Math.max(bE,e1(w,r,q.rir));ses=true}})});
+      if(ses)any=true})}
+  ch.forEach(d=>putLog(d));
+  S.ex=S.ex||{};S.mmap=S.mmap||{};S.alias=S.alias||{};
+  if(S.ex[ks]&&!S.ex[kd]){S.ex[kd]=Object.assign({},S.ex[ks],{n:dst});if(S.mmap[ks])S.mmap[kd]=S.mmap[ks]}
+  delete S.ex[ks];delete S.mmap[ks];
+  Object.keys(S.alias).forEach(k=>{if(norm(S.alias[k])===ks)S.alias[k]=dst});S.alias[ks]=dst;delete S.alias[kd];
+  saveSettings();
+  if(cur&&!cur.free&&!cur.touched&&!LOGS[cur.date])cur=draft(cur.date);
+  return ch.size;
+}
+function mergeCard(){
+  const I=nameIndex(),names=Object.values(I).filter(o=>!(S.alias||{})[o.k]).sort((p,q)=>q.logs-p.logs||p.n.localeCompare(q.n,'ko'));
+  const m=ui.mg||{},src=m.src||'',dst=m.dst||'',hints=mergeHints(),al=Object.entries(S.alias||{});
+  const opt=(v)=>`<option value="">고르기…</option>`+names.map(o=>`<option value="${esc(o.n)}" ${o.n===v?'selected':''}>${esc(o.n)}${o.logs?' ('+o.logs+'회)':''}</option>`).join('');
+  const cnt=src?(I[norm(src)]||{}).logs||0:0;
+  return`<div class="card"><h2>종목 합치기</h2><div class="mute">같은 운동이 다른 이름으로 나뉘어 있으면 하나로 합칩니다. 합친 종목의 모든 기록 이름이 바뀌고, 프로그램에서 나오는 이름도 앞으로 합친 이름으로 나옵니다.</div>
+  ${hints.length?`<div class="mute" style="margin-top:8px">합칠 후보</div><div class="chips">${hints.map(([a,b_],k)=>`<button class="chip" data-a="mghint" data-k="${k}">${esc(a)} → ${esc(b_)}</button>`).join('')}</div>`:''}
+  <label class="f" style="margin-top:8px">없앨 이름</label><select data-mg="src">${opt(src)}</select>
+  <label class="f" style="margin-top:8px">남길 이름</label><select data-mg="dst">${opt(dst)}</select>
+  ${src&&dst&&norm(src)!==norm(dst)?`<div class="panel">'${esc(src)}' 기록 ${cnt}회가 '${esc(dst)}'로 바뀝니다. 되돌리기 어렵습니다.<div class="row" style="margin-top:6px"><button class="btn pri" data-a="mgdo" style="${m.ok?'background:var(--acc);color:var(--acc-fg)':''}">${m.ok?'정말 합치기':'합치기'}</button><button class="btn" data-a="mgno">취소</button></div></div>`:''}
+  ${al.length?`<div class="mute" style="margin-top:10px">합친 이름 (프로그램에서 나오면 바꿔서 보여 줌)</div>${al.map(([k,v])=>`<div class="row" style="justify-content:space-between;padding:4px 0;border-top:1px solid var(--line)"><span class="mute">${esc(k)} → <b>${esc(v)}</b></span><button class="btn" data-a="aldel" data-k="${esc(k)}" style="min-height:32px;padding:2px 10px">해제</button></div>`).join('')}`:''}</div>`;
 }
 function hist(name){
   const out=[],n=norm(name),all=Object.assign({},LOGS);if(cur)all[cur.date]=cur;
@@ -463,6 +524,7 @@ function chipsHtml(q){
   ui.opts=names;
   return names.map((x,k)=>{const mm=muscleOf(x),dd=exDef(x),lab=[dd&&dd.eq,mm?mm.filter(q=>q[1]>=1).map(q=>q[0]).join('·'):''].filter(Boolean).join(' · ');return`<button class="chip" data-a="pickname" data-k="${k}">${esc(x)}${lab?` <span class="mute" style="font-size:12px">· ${esc(lab)}</span>`:''}</button>`}).join('')||'<span class="mute">일치하는 운동이 없으면 아래 버튼으로 이 이름 그대로 교체합니다.</span>';
 }
+function fixParen(n){return String(n||'').replace(/\s*[\(（]\s*([^\)）]*?)\s*[\)）]/g,' $1').replace(/\s+/g,' ').trim()}
 function canonName(n){const k=norm(n);if(!k)return n;const hit=allNames().find(x=>norm(x)===k);return hit||n}
 function applySwap(i,name){
   const e=cur.exercises[i];name=canonName(String(name||'').trim());if(!name)return;
@@ -517,6 +579,7 @@ function vEx(e,i){
       <button class="ok" data-a="done" data-i="${i}" data-j="${j}" aria-label="완료">✓</button>
       ${shortfall(s)&&!e.attempt?`<div class="tgt">미달 사유 ${['힘 부족','통증','폼 무너짐','시간 부족','기타'].map(v=>`<button class="chip" style="min-height:40px;${s.why===v?'background:var(--acc);color:var(--acc-fg);border-color:var(--acc)':''}" data-a="why" data-i="${i}" data-j="${j}" data-v="${v}">${v}</button>`).join(' ')}</div>`:''}
       ${s.pr?`<div class="tgt" style="color:var(--accT);font-weight:700">🏆 ${esc(s.pr)}</div>`:''}
+      ${s.done&&s.rir==='4+'&&s.type!=='warm'&&!e.attempt?`<div class="tgt">RIR 4+ · 너무 쉬운 세트로 보고 주간 부위별 세트에 세지 않음</div>`:''}
       ${s.tw||s.tr?`<div class="tgt">목표 ${s.tw?nf(s.tw)+'kg':''}${s.tw&&s.tr?' × ':''}${esc(s.tr||'')}${pl?` <span class="plates">· ${pl}</span>`:''}</div>`:''}
     </div>`;
   });
@@ -649,7 +712,8 @@ function exFormHtml(){
   else if(st===3)b=`<div class="mute" style="font-size:13px">함께 쓰이는 부위를 고르세요. 여러 개 가능, 0.5세트로 셉니다.</div><div class="bigchips">${MUS.filter(v=>v!==f.m).map(v=>ch('m2',v,v,f.m2.includes(v))).join('')}</div><div class="row"><button class="btn pri" data-a="exfstep" data-v="4">${f.m2.length?'다음 →':'건너뛰기 →'}</button></div>`;
   else if(st===4)b=`<div class="bigchips">${UNITS.map(([v,l])=>ch('u',v,l,f.u===v)).join('')}</div><div class="mute" style="font-size:12px">무게×횟수: 일반 웨이트 · 횟수: 맨몸(풀업 등) · 시간: 플랭크 등 · 시간×거리: 달리기·사이클</div>`;
   else{const row=(lab,val,stp)=>`<div class="row" style="justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)"><span><span class="mute">${lab}</span> <b>${esc(val||'-')}</b></span><button class="btn" data-a="exfstep" data-v="${stp}" style="min-height:36px;padding:4px 10px">바꾸기</button></div>`;
-    b=row('이름',f.n,0)+row('도구',f.eq,1)+row('주 부위',f.m,2)+(f.m!=='없음'?row('보조 부위',f.m2.join('·')||'없음',3):'')+row('기록 단위',UNITN[f.u],4)+`<div class="row" style="margin-top:8px"><button class="btn pri" data-a="exfsave">저장</button></div>`}
+    const same=!f.old&&norm(f.n)?allNames().find(x=>norm(x)===norm(f.n)):null;
+    b=(f.info?`<div class="mute" style="margin:4px 0">${esc(f.info)}</div>`:'')+(same?`<div style="color:var(--warn);margin:4px 0">이미 있는 종목 '${esc(same)}'과 같은 이름이라 그 종목으로 저장됩니다. 기록도 합쳐집니다.${exDef(same)?' 도구·부위·단위도 이 설정으로 바뀝니다.':''} 다른 운동이면 이름을 바꾸세요.</div>`:'')+row('이름',f.n,0)+row('도구',f.eq,1)+row('주 부위',f.m,2)+(f.m!=='없음'?row('보조 부위',f.m2.join('·')||'없음',3):'')+row('기록 단위',UNITN[f.u],4)+`<div class="row" style="margin-top:8px"><button class="btn pri" data-a="exfsave">저장</button></div>`}
   return`<div class="panel"><div class="row" style="justify-content:space-between"><b>${f.old?'종목 설정 바꾸기':'새 종목 만들기'}</b><span class="steps">${st<5?(st+1)+' / 5 · ':''}${T[st]}</span></div>
   ${b}${f.err?`<div style="color:var(--warn);margin-top:6px">${esc(f.err)}</div>`:''}
   <div class="row" style="margin-top:8px">${st>0&&st<5?`<button class="btn" data-a="exfstep" data-v="${st===4&&f.m==='없음'?2:st-1}">← 뒤로</button>`:''}<button class="btn" data-a="exfno">취소</button></div></div>`;
@@ -821,12 +885,22 @@ function vBody(){
     const cnt={};
     const avg=(from,to)=>{const a=ds.filter(d=>{const n=dayDiff(d,last);return n>=from&&n<=to}).map(d=>WM[d]);cnt[from]=a.length;return a.length?a.reduce((x,y)=>x+y,0)/a.length:null};
     const a1=avg(0,6),a0=avg(7,13);
-    trend=`<div class="card"><div class="stats"><span><b>${nf(a1)}</b> <span class="mute">kg · 최근 7일 평균 (${cnt[0]}회 측정${cnt[0]<3?' · 참고용':''})</span></span>${a0?`<span><b>${(a1-a0>=0?'+':'')+nf(a1-a0)}</b> <span class="mute">kg / 전주 대비</span></span>`:''}</div>${chart('body-w',wsr,{unit:'kg',label:'체중',def:'90',h:110})}${(()=>{const wd=Object.keys(BODY).filter(d=>+BODY[d].waist).sort();return wd.length>1?'<div class="mute" style="margin-top:10px">허리 (cm)</div>'+chart('body-wa',wd.map(d=>({d,y:+BODY[d].waist})),{unit:'cm',label:'허리',def:'90',h:90}):''})()}</div>`;
+    trend=`<div class="card"><div class="stats"><span><b>${nf(a1)}</b> <span class="mute">kg · 최근 7일 평균 (${cnt[0]}회 측정${cnt[0]<3?' · 참고용':''})</span></span>${a0?`<span><b>${(a1-a0>=0?'+':'')+nf(a1-a0)}</b> <span class="mute">kg / 전주 대비</span></span>`:''}</div>${wTrend(ds,WM)}${chart('body-w',wsr,{unit:'kg',label:'체중',def:'90',h:110})}${(()=>{const wd=Object.keys(BODY).filter(d=>+BODY[d].waist).sort();return wd.length>1?'<div class="mute" style="margin-top:10px">허리 (cm)</div>'+chart('body-wa',wd.map(d=>({d,y:+BODY[d].waist})),{unit:'cm',label:'허리',def:'90',h:90}):''})()}</div>`;
   }
   return`<div class="card"><div class="row"><input type="date" id="bdate" value="${bodyDate}" style="flex:1;text-align:left"></div>
   <div class="grid2" style="margin-top:10px">${f('weight','체중 (kg)','0.1')}${f('waist','허리 (cm)','0.1')}${f('bf','체지방률 (%)','0.1')}${f('muscle','골격근량 (kg)','0.1')}</div>
   <label class="f" style="margin-top:10px">메모</label><textarea data-b="note">${esc(b.note||'')}</textarea></div>${trend}
   ${Object.keys(BODY).sort().reverse().slice(0,14).map(d=>{const x=BODY[d];return`<div class="hist" style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span><b>${d.slice(5)}</b> <span class="mute">${x.weight?x.weight+'kg ':''}${x.waist?'· 허리 '+x.waist+' ':''}${x.bf?'· 체지방 '+x.bf+'% ':''}${x.muscle?'· 근육 '+x.muscle:''}</span></span><button class="btn" data-a="delbody" data-d="${d}" style="padding:4px 8px;font-size:12px;${ui.delb===d?'background:var(--acc);color:var(--acc-fg)':''}">${ui.delb===d?'정말?':'삭제'}</button></div>`}).join('')}`;
+}
+function wTrend(ds,WM){
+  const m0=monday(todayStr()),wk=[];
+  for(let i=4;i>=1;i--){const m=addDays(m0,-7*i),v=ds.filter(d=>d>=m&&d<=addDays(m,6)).map(d=>WM[d]);if(v.length>=2)wk.push({i,a:v.reduce((x,y)=>x+y,0)/v.length})}
+  {const v=ds.filter(d=>d>=m0).map(d=>WM[d]);if(v.length>=2)wk.push({i:0,a:v.reduce((x,y)=>x+y,0)/v.length})}
+  if(wk.length<2)return'';
+  const f0=wk[0],f1=wk[wk.length-1],rate=(f1.a-f0.a)/(f0.i-f1.i),g=S.wgoal||{},lo=g.lo,hi=g.hi,hasG=lo!=null&&lo!==''&&hi!=null&&hi!=='';
+  const sg=x=>(x>=0?'+':'')+nf(Math.round(x*100)/100);
+  let msg='';if(hasG){if(rate<+lo)msg=`<div style="color:var(--warn);margin-top:4px">목표(${sg(+lo)}~${sg(+hi)}kg/주)보다 낮습니다. 하루 섭취를 100~150kcal 늘려 보세요.</div>`;else if(rate>+hi)msg=`<div style="color:var(--warn);margin-top:4px">목표(${sg(+lo)}~${sg(+hi)}kg/주)보다 높습니다. 하루 섭취를 100~150kcal 줄여 보세요.</div>`;else msg=`<div class="mute" style="margin-top:4px">목표 범위(${sg(+lo)}~${sg(+hi)}kg/주) 안입니다.</div>`}
+  return`<div style="margin-top:8px"><b>${sg(rate)}</b> <span class="mute">kg/주 · 최근 ${f0.i-f1.i+1}주 평균 체중 변화 (주 2회 이상 잰 주만)</span>${msg}${hasG?'':'<div class="mute" style="font-size:12px">설정 → 내 1RM · 목표에서 주간 체중 목표를 정하면 범위를 벗어날 때 알려 줍니다.</div>'}</div>`;
 }
 function spark(ds){return sparkV(ds.map(d=>+BODY[d].weight))}
 function sparkV(v){
@@ -1073,7 +1147,7 @@ function weightSeries(){
 }
 function vProf(){
   const G=+S.goal3||0,K3=['bench','squat','dead'],ts=totalSeries(),tot=ts.length?ts[ts.length-1]:null,peak=ts.reduce((a,b)=>(!a||b.y>a.y)?b:a,null);
-  let h=ormqHtml()+aiCard()+weekReportCard()+prCard()+`<div class="card"><span class="tag">3대 합계</span>${tot?`<div class="stats"><span><b>${nf(tot.y)}</b> <span class="mute">kg${G?' · 목표 '+nf(G):''}</span></span>${G?`<span><b>${nf(G-tot.y)}</b> <span class="mute">kg 남음</span></span>`:''}</div>
+  let h=ormqHtml()+aiCard()+weekReportCard()+testWeekCard()+prCard()+`<div class="card"><span class="tag">3대 합계</span>${tot?`<div class="stats"><span><b>${nf(tot.y)}</b> <span class="mute">kg${G?' · 목표 '+nf(G):''}</span></span>${G?`<span><b>${nf(G-tot.y)}</b> <span class="mute">kg 남음</span></span>`:''}</div>
     ${G?`<div style="height:8px;border-radius:4px;background:var(--line);margin:8px 0"><div style="height:8px;border-radius:4px;background:var(--acc);width:${Math.min(100,tot.y/G*100).toFixed(1)}%"></div></div>`:''}
     <div class="mute">최고 ${nf(peak.y)}kg (${peak.d}) 대비 ${dlt(tot.y,peak.y,'kg')}</div>${chart('tot',ts,{ref:G||undefined,refLabel:G?nf(G):'',unit:'kg',label:'3대 합계 추이',h:120})}`:'<div class="mute">기록이 없습니다.</div>'}</div>`;
   LIFTS.forEach(([k,label,ex])=>{
@@ -1700,11 +1774,14 @@ function saveProfile(){
 
 function vSet(){
   if(pb)return pbHtml();
-  return `<details class="card"><summary><b>짐로그 사용법</b></summary>${tutList()}</details>`+progSection()+`${exLibCard()}<div class="card"><h2>현재 1RM (kg)</h2><div class="grid2">${Object.keys(LN).map(k=>`<div><label class="f">${LN[k]}</label><input type="number" inputmode="decimal" step="2.5" data-o="${k}" value="${S.orm[k]}"></div>`).join('')}</div>
+  return `<details class="card"><summary><b>짐로그 사용법</b></summary>${tutList()}</details>`+progSection()+`${exLibCard()}${mergeCard()}<div class="card"><h2>현재 1RM (kg)</h2><div class="grid2">${Object.keys(LN).map(k=>`<div><label class="f">${LN[k]}</label><input type="number" inputmode="decimal" step="2.5" data-o="${k}" value="${S.orm[k]}"></div>`).join('')}</div>
   <p class="mute">바꾸면 아직 기록 안 한 날의 목표 중량이 새 1RM으로 계산됩니다 (이미 저장된 기록은 그대로).</p>
-  <label class="f" style="margin-top:10px">3대 합계 목표 (kg · 0이면 표시 안 함)</label><input type="number" inputmode="decimal" id="goal3" value="${+S.goal3||0}"></div>
+  <label class="f" style="margin-top:10px">3대 합계 목표 (kg · 0이면 표시 안 함)</label><input type="number" inputmode="decimal" id="goal3" value="${+S.goal3||0}">
+  <label class="f" style="margin-top:10px">주간 체중 변화 목표 (kg/주 · 감량이면 음수, 비우면 안 씀)</label><div class="grid2"><input type="number" inputmode="decimal" step="0.05" id="wglo" placeholder="최소 예: 0.15" value="${esc((S.wgoal||{}).lo??'')}"><input type="number" inputmode="decimal" step="0.05" id="wghi" placeholder="최대 예: 0.3" value="${esc((S.wgoal||{}).hi??'')}"></div></div>
   <div class="card"><div class="grid2"><div><label class="f">시작일 (선택한 프로그램 기준)</label><input type="date" id="start" value="${startOf()}"></div>
   <div><label class="f">바 무게 (kg)</label><input type="number" inputmode="decimal" id="bar" value="${S.bar}"></div></div>
+  <label class="f" style="margin-top:10px">오늘 할 Day 정하는 방식</label><select id="daymode"><option value="date" ${S.dayMode!=='seq'?'selected':''}>요일 기준 (시작일부터 하루씩 Day 1, 2 …)</option><option value="seq" ${S.dayMode==='seq'?'selected':''}>이번 주 순서대로 (한 Day를 하면 다음 날은 다음 Day)</option></select>
+  <div class="mute" style="font-size:12px;margin-top:4px">이번 주 순서대로: 쉬는 날이 끼어도 Day가 밀리지 않습니다. 그 주 Day를 다 하면 남은 날은 휴식일로 나옵니다.</div>
   <p class="mute">원판 표시는 25/20/15/10/5/2.5/1.25kg이 있다고 가정한 값입니다.</p></div>
   <div class="card"><h2>저장 상태</h2><div class="mute">앱 ${APPV} · 서버 연결 ${db?'정상':'없음 (이 기기에만 저장)'}<br>이 접속에서 마지막 서버 저장: ${lastSavedAt?new Date(lastSavedAt).toLocaleTimeString('ko-KR'):'아직 없음'}<br>저장 대기: ${(dirty?1:0)+pend.size}건</div><div class="row" style="margin-top:8px"><button class="btn" data-a="flushnow">지금 저장</button></div></div>
   <div class="card"><h2>백업</h2><div class="mute">전체 기록(운동·몸·프로필·설정·가져온 프로그램)을 JSON 파일로 저장합니다. 브라우저 데이터를 지우거나 기기를 바꾸기 전에 꼭 저장하세요.</div>
@@ -1842,7 +1919,7 @@ document.addEventListener('click',e=>{
     else if(k==='m'){exf.mT=true;if(v==='없음')exf.m2=[];exf.step=exf.old?5:(v==='없음'?4:3)}
     else if(k==='u')exf.step=5;
     render()}
-  else if(a==='exfstep'){if(!exf)return;const v=+t.dataset.v;if(exf.step===0&&v>0&&!String(exf.n||'').trim()){exf.err='종목 이름을 입력하세요';render();return}exf.err='';exf.step=v;render()}
+  else if(a==='exfstep'){if(!exf)return;const v=+t.dataset.v;if(exf.step===0&&v>0&&!String(exf.n||'').trim()){exf.err='종목 이름을 입력하세요';render();return}exf.err='';if(exf.step===0&&v>0){const fx_=fixParen(exf.n);exf.info=fx_!==String(exf.n).trim()?'괄호 안 글자는 메모로 처리돼 지워지므로 "'+fx_+'"로 바꿨어요.':'';exf.n=fx_}exf.step=v;render()}
   else if(a==='exfsave'){exfSave()}
   else if(a==='exfno'){exf=null;render()}
   else if(a==='tpldl'){tplDownload()}
@@ -1860,7 +1937,12 @@ document.addEventListener('click',e=>{
   else if(a==='useprog'){S.progId=t.dataset.id;saveSettings();picked=null;cur=draft(date);xlMsg='';render()}
   else if(a==='applyorm'){const P=PROGS[t.dataset.id];if(P&&P.orm){Object.assign(S.orm,P.orm);saveSettings();xlMsg='1RM을 적용했습니다.';render()}}
   else if(a==='pickname'){applySwap(ui.swap,ui.opts[+t.dataset.k])}
-  else if(a==='swapok'){const q=$('#swq');applySwap(i,q?q.value:'')}
+  else if(a==='swapok'){const q=$('#swq');applySwap(i,q?fixParen(q.value):'')}
+  else if(a==='lackskip'){const x=(ui.skipOpts||[])[+t.dataset.k];if(x){const e0=x.e;cur.exercises.push({tag:'추가',name:e0.name,free:true,rest:e0.rest||90,sets:e0.sets.filter(q=>q.type!=='warm').map(q=>({tw:q.tw,tr:q.tr,w:q.tw||'',r:/^\d+$/.test(String(q.tr||''))?q.tr:'',rir:'',done:false}))});fx=cur.exercises.length-1;fxAll=false;scheduleSave();render()}}
+  else if(a==='mghint'){const h_=mergeHints()[+t.dataset.k];if(h_){ui.mg={src:h_[0],dst:h_[1],ok:false};render()}}
+  else if(a==='mgno'){ui.mg=null;render()}
+  else if(a==='mgdo'){const m=ui.mg||{};if(!m.src||!m.dst)return;if(!m.ok){m.ok=true;render();return}const n_=mergeEx(m.src,m.dst);ui.mg=null;toast(`합쳤습니다: ${m.src} → ${m.dst} (${n_}일 기록)`);render()}
+  else if(a==='aldel'){if(S.alias){delete S.alias[t.dataset.k];saveSettings();render()}}
   else if(a==='lackm'){ui.lack=ui.lack===t.dataset.v?null:t.dataset.v;render()}
   else if(a==='lackadd'){const n=(ui.lackOpts||[])[+t.dataset.k];if(n)lackAdd(n)}
   else if(a==='addex'){cur.exercises.push({tag:'추가',name:'',free:true,rest:90,sets:[{w:'',r:'',rir:'',done:false}]});fx=cur.exercises.length-1;fxAll=false;scheduleSave();render()}
@@ -1918,6 +2000,10 @@ document.addEventListener('change',e=>{
   else if(t.id==='start'&&t.value){S.starts=S.starts||{};S.starts[S.progId]=t.value;if(S.progId==='v3')S.start=t.value;saveSettings()}
   else if(t.id==='aiw'){aiW=+t.value;render()}
   else if(t.id==='goal3'){S.goal3=+t.value||0;saveSettings()}
+  else if(t.id==='wglo'||t.id==='wghi'){S.wgoal=Object.assign({},S.wgoal||{});S.wgoal[t.id==='wglo'?'lo':'hi']=t.value===''?'':+t.value;saveSettings()}
+  else if(t.id==='daymode'){S.dayMode=t.value;saveSettings();picked=null;if(!LOGS[date]&&!dirty)cur=draft(date);fx=null;render()}
+  else if(t.dataset.mg){ui.mg=Object.assign({},ui.mg||{},{[t.dataset.mg]:t.value,ok:false});render()}
+  else if(t.dataset.nm){const v=canonName(fixParen(t.value));if(v!==t.value){const e2=cur.exercises[+t.dataset.i];if(e2){e2.name=v;t.value=v;scheduleSave()}}}
   else if(t.id==='bar'){S.bar=+t.value||20;saveSettings()}
 });
 function conflictHtml(){return`<div class="card" style="border-color:var(--acc)"><b>다른 탭에서 이 날 기록을 수정했습니다</b><div class="mute" style="margin:4px 0 8px">지금 화면의 편집 내용과 서버 내용이 다릅니다.</div><div class="row"><button class="btn pri" data-a="cfload">서버 내용 불러오기</button><button class="btn" data-a="cfkeep">내 편집 유지</button></div></div>`}
@@ -1960,12 +2046,15 @@ function weekAgg(mon){
 const LACK_SKIP=['전완','복근','승모근'];
 function lackCard(){
   if(!cur||!cur.free||cur.legacy)return'';
-  const mon=monday(date),all=Object.assign({},LOGS);
-  let prior=0;for(let d=mon;d<date;d=addDays(d,1)){const l=all[d];if(l&&l.exercises&&stats(l).done>0)prior++}
+  const mon=monday(date),all=Object.assign({},LOGS),skip=[];
+  let prior=0;for(let d=mon;d<date;d=addDays(d,1)){const l=all[d];if(l&&l.exercises&&stats(l).done>0){prior++;if(!l.free)l.exercises.forEach(e=>{if(!e.check&&e.name&&(e.sets||[]).length&&!e.sets.some(q=>q.done))skip.push({d,e})})}}
   if(!prior)return'';
+  ui.skipOpts=skip;const have=new Set(cur.exercises.map(e=>norm(e.name||'')));
+  const skH=skip.length?`<div class="panel" style="margin-top:0"><b>이번 주 건너뛴 운동</b><div class="mute" style="font-size:13px">프로그램에 있었는데 하지 않은 운동입니다. 누르면 그날 목표 그대로 추가합니다.</div>${skip.map((x,k)=>`<div class="row" style="justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)"><span style="min-width:0"><b>${esc(cleanName(x.e.name))}</b> <span class="mute">${x.d.slice(5)} (${DOW[parseD(x.d).getDay()]}) · ${x.e.sets.length}세트</span></span>${have.has(norm(x.e.name))?'<span class="mute">추가됨</span>':`<button class="btn" data-a="lackskip" data-k="${k}" style="min-height:36px;padding:4px 12px">추가</button>`}</div>`).join('')}</div>`:'';
   const r=weekSets(mon),low=MUS.filter(m=>!LACK_SKIP.includes(m)&&r.tot[m]<10).sort((a,b)=>r.tot[a]-r.tot[b]);
-  let h=`<div class="card"><span class="tag">이번 주(${mon.slice(5)}~) 부족한 부위</span>`;
-  if(!low.length)return h+`<div class="mute" style="margin-top:6px">이번 주는 모든 부위가 10세트 이상입니다.</div></div>`;
+  let h=`<div class="card"><span class="tag">이번 주(${mon.slice(5)}~) 보충할 것</span>`+skH;
+  if(!low.length)return h+`<div class="mute" style="margin-top:6px">부위별로는 이번 주 모두 10세트 이상입니다.</div></div>`;
+  h+=`<div style="margin-top:8px"><b>부족한 부위</b></div>`;
   h+=`<div class="mute" style="margin:4px 0">주 10세트 기준 · 누르면 그 부위 운동을 골라 바로 추가합니다.</div><div class="chips">${low.map(m=>`<button class="chip" data-a="lackm" data-v="${m}" style="${ui.lack===m?'background:var(--acc);color:var(--acc-fg);border-color:var(--acc)':''}">${m} <b>${nf(r.tot[m])}</b>/10</button>`).join('')}</div>`;
   if(ui.lack&&low.includes(ui.lack)){
     const m=ui.lack,from=addDays(date,-56),cnt={};
@@ -1981,6 +2070,19 @@ function lackAdd(name){
   const last=hist(name).filter(x=>x.date!==date).pop();
   const e={tag:'추가',name,free:true,rest:90,sets:[0,1,2].map(()=>{const q={w:'',r:'',rir:'',done:false};if(last)q.tw=last.top.w;return q})};
   applySug(e,date);cur.exercises.push(e);fx=cur.exercises.length-1;fxAll=false;scheduleSave();render();
+}
+function testWeekCard(){
+  const W={};Object.keys(LOGS).forEach(d=>(LOGS[d].exercises||[]).forEach(e=>{if(!e.attempt||!e.lift)return;const ok=(e.sets||[]).filter(q=>q.done&&!q.fail&&+q.w);if(!ok.length)return;const m=monday(d),w=W[m]||(W[m]={});w[e.lift]=Math.max(w[e.lift]||0,...ok.map(q=>+q.w))}));
+  const G=+S.goal3||0,ks=Object.keys(W).sort(),last=ks[ks.length-1],K=[['bench','벤치'],['squat','스쿼트'],['dead','데드']];
+  let nx='';const P=curProg(),wl=wkeys(P),ti=wl.findIndex(w=>P.weeks[w].d.some(D=>D.b.some(b=>/본 시도/.test(b.t))));
+  if(ti>=0){const st=addDays(startOf(),ti*7),en=addDays(st,6);if(en>=todayStr())nx=`${st.slice(5)}~${en.slice(5)}`}
+  if(!last&&!nx)return'';
+  let h=`<div class="card"><span class="tag">측정주 3대 합계</span><div class="mute" style="font-size:13px">같은 주(월~일)에 낸 본 시도 1회 성공만 더합니다.</div>`;
+  if(last){const w=W[last],miss=K.filter(([k])=>!w[k]).map(x=>x[1]),sum=K.reduce((a,[k])=>a+(w[k]||0),0);
+    h+=`<div class="stats" style="margin-top:6px"><span><b>${nf(sum)}</b> <span class="mute">kg · ${last.slice(5)} 주${miss.length?' (진행 중)':''}</span></span>${G?`<span><b>${nf(Math.max(0,G-sum))}</b> <span class="mute">kg 남음 · 목표 ${nf(G)}</span></span>`:''}</div>
+    <div class="mute">${K.map(([k,l])=>l+' '+(w[k]?nf(w[k]):'—')).join(' · ')}${miss.length?' · 아직: '+miss.join(', '):''}</div>`}
+  if(nx&&(!last||last<monday(todayStr())))h+=`<div class="mute" style="margin-top:6px">다음 측정주: ${nx} (프로그램의 본 시도 주)</div>`;
+  return h+'</div>';
 }
 function weekReportCard(){
   const mon=monday(todayStr()),a=weekAgg(mon),b=weekAgg(addDays(mon,-7)),ws=weekSets(mon).tot;
