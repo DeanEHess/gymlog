@@ -169,14 +169,15 @@ const nf=x=>x===''||x==null||isNaN(x)?'':String(Math.round(x*100)/100);
 const mround=(x,u=2.5)=>Math.round(x/u+1e-9)*u;
 const todayStr=()=>fmtD(new Date(Date.now()-4*36e5));
 const BADK=new Set();let lsFail=0,stale=false;
-const verN=v=>+(String(v||'').match(/(\d+)\s*$/)||[0,0])[1];
+const verN=v=>+(String(v||'').match(/(\d+)\s*$/)||[0,0])[1];const verK=v=>String(v||'').replace(/\d+\s*$/,'');const newer=v=>verK(v)===verK(APPV)&&verN(v)>verN(APPV);
 const lsGet=(k,d)=>{let v=null;try{v=localStorage.getItem(k)}catch(e){return d}if(!v)return d;try{return JSON.parse(v)}catch(e){BADK.add(k);return d}};
 const lsSet=(k,v)=>{if(stale||BADK.has(k))return false;try{localStorage.setItem(k,JSON.stringify(v));if(lsFail){lsFail=0;safeBar()}return true}catch(e){lsFail++;safeBar();return false}};
 const lsDel=k=>{try{localStorage.removeItem(k)}catch(e){}};
 const addDays=(d,n)=>{const x=parseD(d);x.setDate(x.getDate()+n);return fmtD(x)};
 
 let db=null,S=clone(DEF),LOGS={},BODY={},cur=null,date=todayStr(),tab='today',dirty=false,hasFocus=false,picked=null;
-const APPV='web9';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
+const APPV='web10';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
+const tmo=p=>Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error('서버 응답 없음(20초)')),20000))]);
 let ui={},chain=Promise.resolve(),saveT=null,bodyT=null,setT=null,pend=new Set(),bodyDate=date,rest=null,restTick=null;
 
 /* ---------- sync status ---------- */
@@ -263,18 +264,19 @@ function flush(){
   if(!cur||stale)return;stamp();lsSet('gl:log:'+cur.date,cur);
   if(!db){dirty=false;setSync('local');return}
   const snap=clone(cur);(seen[snap.date]||(seen[snap.date]=new Set())).add(snap.updatedAt);
-  chain=chain.then(()=>db.doc('logs/'+snap.date).set(snap)).then(()=>{
+  chain=chain.then(()=>tmo(db.doc('logs/'+snap.date).set(snap))).then(()=>{
     lastSavedAt=Date.now();if(cur&&cur.date===snap.date&&cur.updatedAt===snap.updatedAt){dirty=false}
     setSync('ok');
   }).catch(e=>setSync('err',e));
 }
-function saveSettings(){
-  if(stale)return;lsSet('gl:settings',S);
-  if(db)chain=chain.then(()=>db.doc('settings/main').set(clone(S))).then(()=>setSync('ok')).catch(e=>setSync('err',e));
+function saveSettings(done){
+  if(stale){done&&done(false,'stale');return}lsSet('gl:settings',S);
+  if(db)chain=chain.then(()=>tmo(db.doc('settings/main').set(clone(S)))).then(()=>{setSync('ok');done&&done(true)}).catch(e=>{setSync('err',e);done&&done(false,e)});
+  else done&&done(true);
 }
 function saveBody(d){
   d=d||bodyDate;pend.delete(d);const b=BODY[d];if(!b||stale)return;b.updatedAt=Date.now();lsSet('gl:body:'+d,b);
-  if(db){const snap=clone(b);chain=chain.then(()=>db.doc('body/'+d).set(snap)).then(()=>setSync('ok')).catch(e=>setSync('err',e))}
+  if(db){const snap=clone(b);chain=chain.then(()=>tmo(db.doc('body/'+d).set(snap))).then(()=>setSync('ok')).catch(e=>setSync('err',e))}
   else setSync('local');
 }
 let recL=false,recB=false;
@@ -283,14 +285,14 @@ function recoverLogs(){
   try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(!k.startsWith('gl:log:'))continue;
     const v=JSON.parse(localStorage.getItem(k)),d=k.slice(7);
     if(v&&v.updatedAt&&Date.now()-v.updatedAt<48*36e5&&(!LOGS[d]||v.updatedAt>(LOGS[d].updatedAt||0))&&(v.setsDone>0||(v.exercises||[]).some(e=>e.memo||e.free))){
-      LOGS[d]=v;n++;(seen[d]||(seen[d]=new Set())).add(v.updatedAt);chain=chain.then(()=>db.doc('logs/'+d).set(clone(v))).catch(e=>setSync('err',e))}}}catch(e){}
+      LOGS[d]=v;n++;(seen[d]||(seen[d]=new Set())).add(v.updatedAt);chain=chain.then(()=>tmo(db.doc('logs/'+d).set(clone(v)))).catch(e=>setSync('err',e))}}}catch(e){}
   if(n){if(cur&&!dirty)cur=draft(cur.date);setSync('ok')}
 }
 function recoverBody(){
   if(recB)return;recB=true;
   try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(!k.startsWith('gl:body:'))continue;
     const v=JSON.parse(localStorage.getItem(k)),d=k.slice(8);
-    if(v&&v.updatedAt&&Date.now()-v.updatedAt<48*36e5&&(!BODY[d]||v.updatedAt>(BODY[d].updatedAt||0))){BODY[d]=v;chain=chain.then(()=>db.doc('body/'+d).set(clone(v))).catch(e=>setSync('err',e))}}}catch(e){}
+    if(v&&v.updatedAt&&Date.now()-v.updatedAt<48*36e5&&(!BODY[d]||v.updatedAt>(BODY[d].updatedAt||0))){BODY[d]=v;chain=chain.then(()=>tmo(db.doc('body/'+d).set(clone(v)))).catch(e=>setSync('err',e))}}}catch(e){}
 }
 function openDate(d){
   date=d;ui={};fsv=null;exf=null;fx=null;pickOpen=false;pks=null;cur=draft(d);render();
@@ -318,7 +320,7 @@ function render0(){
   const sh=safeHtml();
   $('#view').innerHTML=(sh?`<div id="safebar">${sh}</div>`:'')+{today:vToday,hist:vHist,body:vBody,prof:vProf,set:()=>setNavWrap(vSet())}[tab]();
 }
-window.addEventListener('storage',e=>{if(e.key==='gl:appv'&&e.newValue){let v='';try{v=JSON.parse(e.newValue)}catch(x){}if(verN(v)>verN(APPV)&&!stale){stale=true;render()}}});
+window.addEventListener('storage',e=>{if(e.key==='gl:appv'&&e.newValue){let v='';try{v=JSON.parse(e.newValue)}catch(x){}if(newer(v)&&!stale){stale=true;render()}}});
 let pickOpen=false;
 function applyPick(pk){if(cur.touched&&stats(cur).done===0){ui={pickask:pk};render();return}picked=pk;cur=draft(date);ui={};fx=null;pickOpen=false;pks=null;render()}
 function pickerHtml(){
@@ -482,7 +484,7 @@ function putLog(d){
   const L=LOGS[d];if(!L||stale)return;L.updatedAt=Date.now();(seen[d]||(seen[d]=new Set())).add(L.updatedAt);
   if(cur&&cur.date===d){cur=clone(L);dirty=false}
   if(!db){lsSet('gl:log:'+d,L);return}
-  const snap=clone(L);chain=chain.then(()=>db.doc('logs/'+d).set(snap)).then(()=>setSync('ok')).catch(e=>setSync('err',e));
+  const snap=clone(L);chain=chain.then(()=>tmo(db.doc('logs/'+d).set(snap))).then(()=>setSync('ok')).catch(e=>setSync('err',e));
 }
 function mergeEx(src,dst){
   flushNow();
@@ -735,11 +737,12 @@ function exfSave(){
   if(!n){f.err='종목 이름을 입력하세요';render();return}
   if(!f.eq){f.err='운동 도구를 고르세요';render();return}
   if(!f.m){f.err='주 근육 부위를 고르세요 (유산소 등은 "없음")';render();return}
+  if(stale){f.err='이 창은 옛 버전이라 저장을 멈췄어요. 새로고침한 뒤 다시 저장하세요.';render();return}
   const k=norm(n);S.ex=S.ex||{};S.mmap=S.mmap||{};
   if(f.old&&f.old!==k){delete S.ex[f.old];delete S.mmap[f.old]}
   S.ex[k]={n,eq:f.eq,m:f.m,m2:f.m===('없음')?[]:f.m2.filter(x=>x!==f.m),u:f.u};
   S.mmap[k]=f.m==='없음'?[]:[[f.m,1]].concat(S.ex[k].m2.map(x=>[x,.5]));
-  saveSettings();
+  saveSettings((ok,e)=>{if(!ok)toast('종목 저장 실패 — '+(e&&e.message?e.message:'연결 확인')+'. 다시 저장하세요')});
   const i=f.i,src=f.src;exf=null;
   if(i!=null&&cur&&cur.exercises[i]){if(src==='swap'){applySwap(i,n)}else{cur.exercises[i].name=n;scheduleSave()}}
   toast('종목 저장: '+n);render();
@@ -747,8 +750,8 @@ function exfSave(){
 function exLibCard(){
   const L=Object.entries(S.ex||{}).sort((a,b)=>a[1].n.localeCompare(b[1].n,'ko'));
   return`<div class="card"><h2>내 종목</h2><div class="mute">종목마다 운동 도구·근육 부위·기록 단위(무게×횟수, 횟수, 시간, 시간×거리)를 정해 둡니다. 부위는 주간 부위별 세트에 반영됩니다.</div>
-  ${L.map(([k,d])=>`<div class="row" style="justify-content:space-between;padding:8px 0;border-top:1px solid var(--line);flex-wrap:wrap"><span style="min-width:0;flex:1"><b>${esc(d.n)}</b> <span class="mute">${exTag(d.n)}</span></span><span class="row"><button class="btn" data-a="exfedit" data-k="${esc(k)}">편집</button><button class="btn" data-a="exfdel" data-k="${esc(k)}" style="${ui.exdel===k?'background:var(--acc);color:var(--acc-fg)':''}">${ui.exdel===k?'정말 삭제':'삭제'}</button></span></div>`).join('')}
-  ${exf&&exf.src==='set'?exFormHtml():`<div class="row" style="margin-top:8px"><button class="btn pri" data-a="exfnew" data-src="set">+ 새 종목 만들기</button></div>`}</div>`;
+  ${L.map(([k,d])=>`<div class="row" style="justify-content:space-between;padding:8px 0;border-top:1px solid var(--line);flex-wrap:wrap"><span style="min-width:0;flex:1"><b>${esc(d.n)}</b> <span class="mute">${exTag(d.n)}</span></span><span class="row"><button class="btn" data-a="exfedit" data-k="${esc(k)}">편집</button><button class="btn" data-a="exfdel" data-k="${esc(k)}" style="${ui.exdel===k?'background:var(--acc);color:var(--acc-fg)':''}">${ui.exdel===k?'정말 삭제':'삭제'}</button></span></div>${exf&&exf.src==='set'&&exf.old===k?exFormHtml():''}`).join('')}
+  ${exf&&exf.src==='set'&&exf.old&&S.ex&&S.ex[exf.old]?'':exf&&exf.src==='set'?exFormHtml():`<div class="row" style="margin-top:8px"><button class="btn pri" data-a="exfnew" data-src="set">+ 새 종목 만들기</button></div>`}</div>`;
 }
 function weekSets(mon){
   const end=addDays(mon,6),all=Object.assign({},LOGS);if(cur)all[cur.date]=cur;
@@ -811,12 +814,12 @@ function applyCond(c){
 }
 function deleteLog(d){
   clearTimeout(saveT);dirty=false;delete LOGS[d];lsDel('gl:log:'+d);
-  if(db)chain=chain.then(()=>db.doc('logs/'+d).delete()).then(()=>setSync('ok')).catch(e=>setSync('err',e));
+  if(db)chain=chain.then(()=>tmo(db.doc('logs/'+d).delete())).then(()=>setSync('ok')).catch(e=>setSync('err',e));
   if(cur&&cur.date===d){picked=null;cur=draft(d)}
 }
 function deleteBody(d){
   delete BODY[d];lsDel('gl:body:'+d);
-  if(db)chain=chain.then(()=>db.doc('body/'+d).delete()).then(()=>setSync('ok')).catch(e=>setSync('err',e));
+  if(db)chain=chain.then(()=>tmo(db.doc('body/'+d).delete())).then(()=>setSync('ok')).catch(e=>setSync('err',e));
 }
 function setBody(d,k,v){
   const b=BODY[d]=BODY[d]||{date:d};b[k]=v===''?'':(typeof v==='number'?v:v);
@@ -1785,7 +1788,7 @@ async function pbSave(){
 }
 function saveProfile(){
   if(stale)return;lsSet('gl:profile',PROFILE);
-  if(db)chain=chain.then(()=>db.doc('profile/main').set(clone(PROFILE))).then(()=>setSync('ok')).catch(e=>setSync('err',e));
+  if(db)chain=chain.then(()=>tmo(db.doc('profile/main').set(clone(PROFILE)))).then(()=>setSync('ok')).catch(e=>setSync('err',e));
   else setSync('local');
 }
 
@@ -1936,8 +1939,8 @@ document.addEventListener('click',e=>{
     else if(k==='m'){exf.mT=true;if(v==='없음')exf.m2=[];exf.step=exf.old?5:(v==='없음'?4:3)}
     else if(k==='u')exf.step=5;
     render()}
-  else if(a==='exfstep'){if(!exf)return;const v=+t.dataset.v;if(exf.step===0&&v>0&&!String(exf.n||'').trim()){exf.err='종목 이름을 입력하세요';render();return}exf.err='';if(exf.step===0&&v>0){const fx_=fixParen(exf.n);exf.info=fx_!==String(exf.n).trim()?'괄호 안 글자는 메모로 처리돼 지워지므로 "'+fx_+'"로 바꿨어요.':'';exf.n=fx_}exf.step=v;render()}
-  else if(a==='exfsave'){exfSave()}
+  else if(a==='exfstep'){if(!exf)return;let v=+t.dataset.v;{const inp=document.querySelector('[data-exf=n]');if(inp&&exf.step===0)exf.n=inp.value}if(exf.step===0&&v>0&&!String(exf.n||'').trim()){exf.err='종목 이름을 입력하세요';render();return}exf.err='';if(exf.step===0&&v>0){const fx_=fixParen(exf.n);exf.info=fx_!==String(exf.n).trim()?'괄호 안 글자는 메모로 처리돼 지워지므로 "'+fx_+'"로 바꿨어요.':'';exf.n=fx_}if(exf.old&&v>(exf.step||0))v=5;exf.step=v;render()}
+  else if(a==='exfsave'){const inp=document.querySelector('[data-exf=n]');if(inp&&exf)exf.n=inp.value;exfSave()}
   else if(a==='exfno'){exf=null;render()}
   else if(a==='tpldl'){tplDownload()}
   else if(a==='aicopy'){const txt=aiPrompt(),bx=$('#aibox');
@@ -1949,7 +1952,7 @@ document.addEventListener('click',e=>{
   else if(a==='fsuse'){S.progId=t.dataset.id;saveSettings();picked=null;fsv={done:'지금 쓰는 프로그램을 ‘'+esc((PROGS[t.dataset.id]||{}).name||'')+'’로 바꿨습니다. 다음 운동일부터 이 프로그램이 나옵니다.'};render()}
   else if(a==='delprog'){const id=t.dataset.id;if(ui.delp!==id){ui.delp=id;render();return}
     delete PROGS[id];if(S.progId===id){S.progId='v3';saveSettings()}ui={};
-    if(db)chain=chain.then(()=>db.doc('programs/'+id).delete()).catch(e=>setSync('err',e));else lsDel('gl:prog:'+id);
+    if(db)chain=chain.then(()=>tmo(db.doc('programs/'+id).delete())).catch(e=>setSync('err',e));else lsDel('gl:prog:'+id);
     picked=null;cur=draft(date);render()}
   else if(a==='useprog'){S.progId=t.dataset.id;saveSettings();picked=null;cur=draft(date);xlMsg='';render()}
   else if(a==='applyorm'){const P=PROGS[t.dataset.id];if(P&&P.orm){Object.assign(S.orm,P.orm);saveSettings();xlMsg='1RM을 적용했습니다.';render()}}
@@ -2169,7 +2172,7 @@ function adopt(){
   else if(tab==='hist'||tab==='body')render();
 }
 async function boot(){
-  {const pv=lsGet('gl:appv','');if(verN(pv)>verN(APPV))stale=true;else lsSet('gl:appv',APPV)}
+  {const pv=lsGet('gl:appv','');if(newer(pv))stale=true;else lsSet('gl:appv',APPV)}
   S=Object.assign(clone(DEF),lsGet('gl:settings',{}));PROFILE=lsGet('gl:profile',PROFILE);
   cur=draft(date);render();setSync('wait');
   let c=null;
