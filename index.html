@@ -174,7 +174,7 @@ const lsDel=k=>{try{localStorage.removeItem(k)}catch(e){}};
 const addDays=(d,n)=>{const x=parseD(d);x.setDate(x.getDate()+n);return fmtD(x)};
 
 let db=null,S=clone(DEF),LOGS={},BODY={},cur=null,date=todayStr(),tab='today',dirty=false,hasFocus=false,picked=null;
-const APPV='web5';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
+const APPV='web6';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
 let ui={},chain=Promise.resolve(),saveT=null,bodyT=null,setT=null,pend=new Set(),bodyDate=date,rest=null,restTick=null;
 
 /* ---------- sync status ---------- */
@@ -318,7 +318,7 @@ function vTodayList(){
   let h=tutToday()+`<div class="card"><div class="row"><input type="date" id="dsel" value="${date}" style="flex:1;text-align:left"><button class="btn" data-a="today">오늘</button></div>`;
   if(cur.free){
     h+=`${cur.legacy?'':pickerHtml()}<p class="mute" style="margin:10px 0 0">${cur.legacy?'📦 노트에서 가져온 과거 기록입니다 ('+esc(strip(cur.dayName||''))+'). 수정해도 됩니다.':(s.pre?'프로그램 시작 전입니다.':'오늘은 프로그램상 휴식일입니다.')+' 위에서 Day를 고르면 불러옵니다. 아니면 자유 운동을 기록하세요.'}</p>
-    <div style="margin-top:8px"><button class="btn" data-a="addex">+ 자유 운동 기록</button></div></div>`;
+    <div style="margin-top:8px"><button class="btn" data-a="addex">+ 자유 운동 기록</button></div></div>`+lackCard();
   }else{
     const P=curProg(dp()),wt=(P.weeks[cur.week]||{}).t||'';
     h+=`<div style="margin-top:10px"><span class="tag">${cur.week}주차 · Day ${cur.day+1} · ${DOW[d.getDay()]}</span>
@@ -392,7 +392,7 @@ function vTodayFocus(){
   }
   if(pickOpen)h+=pickSheet();
   if(ui.pickask)h+=`<div class="panel"><b>편집한 내용이 사라집니다</b><div class="mute">운동 교체·메모·세트 편집이 새로 불러올 운동으로 대체됩니다.</div><div class="row" style="margin-top:6px"><button class="btn pri" data-a="pickok">바꾸기</button><button class="btn" data-a="pickno">취소</button></div></div>`;
-  h+='</div>';
+  h+='</div>'+lackCard();
   h=ormqHtml()+(conflict&&conflict===date?conflictHtml():'')+h;
   if(!n)return h;
   h+=`<div class="fxbar"><span>${i<n?'종목 '+(i+1)+' / '+n:'마무리'} · 세트 ${st.done}/${st.total}</span><button class="btn" data-a="fxall" style="min-height:36px;padding:4px 12px">${fxAll?'목록 닫기':'전체 보기'}</button></div>
@@ -1860,6 +1860,8 @@ document.addEventListener('click',e=>{
   else if(a==='applyorm'){const P=PROGS[t.dataset.id];if(P&&P.orm){Object.assign(S.orm,P.orm);saveSettings();xlMsg='1RM을 적용했습니다.';render()}}
   else if(a==='pickname'){applySwap(ui.swap,ui.opts[+t.dataset.k])}
   else if(a==='swapok'){const q=$('#swq');applySwap(i,q?q.value:'')}
+  else if(a==='lackm'){ui.lack=ui.lack===t.dataset.v?null:t.dataset.v;render()}
+  else if(a==='lackadd'){const n=(ui.lackOpts||[])[+t.dataset.k];if(n)lackAdd(n)}
   else if(a==='addex'){cur.exercises.push({tag:'추가',name:'',free:true,rest:90,sets:[{w:'',r:'',rir:'',done:false}]});fx=cur.exercises.length-1;fxAll=false;scheduleSave();render()}
   else if(a==='sum'){
     const txt=summary(cur);
@@ -1953,6 +1955,31 @@ function weekAgg(mon){
   let days=0,vol=0,sets=0,pr=0;
   for(let k=0;k<7;k++){const l=all[addDays(mon,k)];if(!l||!l.exercises)continue;const st=stats(l);if(st.done>0){days++;vol+=st.vol;sets+=st.done;l.exercises.forEach(e=>(e.sets||[]).forEach(q=>{if(q.pr)pr++}))}}
   return{days,vol,sets,pr};
+}
+const LACK_SKIP=['전완','복근','승모근'];
+function lackCard(){
+  if(!cur||!cur.free||cur.legacy)return'';
+  const mon=monday(date),all=Object.assign({},LOGS);
+  let prior=0;for(let d=mon;d<date;d=addDays(d,1)){const l=all[d];if(l&&l.exercises&&stats(l).done>0)prior++}
+  if(!prior)return'';
+  const r=weekSets(mon),low=MUS.filter(m=>!LACK_SKIP.includes(m)&&r.tot[m]<10).sort((a,b)=>r.tot[a]-r.tot[b]);
+  let h=`<div class="card"><span class="tag">이번 주(${mon.slice(5)}~) 부족한 부위</span>`;
+  if(!low.length)return h+`<div class="mute" style="margin-top:6px">이번 주는 모든 부위가 10세트 이상입니다.</div></div>`;
+  h+=`<div class="mute" style="margin:4px 0">주 10세트 기준 · 누르면 그 부위 운동을 골라 바로 추가합니다.</div><div class="chips">${low.map(m=>`<button class="chip" data-a="lackm" data-v="${m}" style="${ui.lack===m?'background:var(--acc);color:var(--acc-fg);border-color:var(--acc)':''}">${m} <b>${nf(r.tot[m])}</b>/10</button>`).join('')}</div>`;
+  if(ui.lack&&low.includes(ui.lack)){
+    const m=ui.lack,from=addDays(date,-56),cnt={};
+    Object.keys(all).filter(d=>d>=from&&d<date).forEach(d=>(all[d].exercises||[]).forEach(x=>{if(x.name&&(x.sets||[]).some(q=>q.done)){const k=norm(x.name);cnt[k]=(cnt[k]||0)+1}}));
+    const names=allNames().filter(n=>!/1RM|시도|테스트/i.test(n)&&(muscleOf(n)||[]).some(q=>q[0]===m&&q[1]>=1)).sort((a,b)=>(cnt[norm(b)]||0)-(cnt[norm(a)]||0)||a.localeCompare(b,'ko')).slice(0,8);
+    ui.lackOpts=names;
+    h+=`<div class="panel"><b>${m} 운동 고르기</b><div class="mute">한 번 누를 때마다 3세트짜리 운동이 추가됩니다.</div>${names.length?names.map((n,k)=>{const d=exDef(n),L=recentSes(n,9).filter(x=>x.d!==date)[0],hh=hist(n).filter(x=>x.date!==date).pop(),lt=(!d||d.u==='wr')&&hh?`${nf(hh.top.w)}×${hh.top.r}`:(L?L.t:'');return`<button class="r" data-a="lackadd" data-k="${k}" style="display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;padding:10px 0;border:0;border-top:1px solid var(--line);background:none;color:var(--fg);font:inherit"><span style="min-width:0"><b>${esc(n)}</b>${d&&d.eq?` <span class="mute" style="font-size:12px">· ${esc(d.eq)}</span>`:''}</span><span class="mute" style="font-size:13px;flex:none">${lt?'지난번 '+esc(lt):'기록 없음'} ＋</span></button>`}).join(''):'<div class="mute">이 부위로 분류된 운동이 없습니다. 아래 "+ 자유 운동 기록"으로 직접 적으세요.</div>'}</div>`;
+  }
+  if(r.unk.length)h+=`<div class="mute" style="margin-top:6px">부위를 모르는 종목 ${r.unk.length}개는 빠져 있습니다(프로필 탭 주간 부위별 세트에서 지정).</div>`;
+  return h+'</div>';
+}
+function lackAdd(name){
+  const last=hist(name).filter(x=>x.date!==date).pop();
+  const e={tag:'추가',name,free:true,rest:90,sets:[0,1,2].map(()=>{const q={w:'',r:'',rir:'',done:false};if(last)q.tw=last.top.w;return q})};
+  applySug(e,date);cur.exercises.push(e);fx=cur.exercises.length-1;fxAll=false;scheduleSave();render();
 }
 function weekReportCard(){
   const mon=monday(todayStr()),a=weekAgg(mon),b=weekAgg(addDays(mon,-7)),ws=weekSets(mon).tot;
