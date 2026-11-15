@@ -168,13 +168,15 @@ const dayDiff=(a,b)=>Math.round((utc(b)-utc(a))/864e5);
 const nf=x=>x===''||x==null||isNaN(x)?'':String(Math.round(x*100)/100);
 const mround=(x,u=2.5)=>Math.round(x/u+1e-9)*u;
 const todayStr=()=>fmtD(new Date(Date.now()-4*36e5));
-const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}};
-const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+const BADK=new Set();let lsFail=0,stale=false;
+const verN=v=>+(String(v||'').match(/(\d+)\s*$/)||[0,0])[1];
+const lsGet=(k,d)=>{let v=null;try{v=localStorage.getItem(k)}catch(e){return d}if(!v)return d;try{return JSON.parse(v)}catch(e){BADK.add(k);return d}};
+const lsSet=(k,v)=>{if(stale||BADK.has(k))return false;try{localStorage.setItem(k,JSON.stringify(v));if(lsFail){lsFail=0;safeBar()}return true}catch(e){lsFail++;safeBar();return false}};
 const lsDel=k=>{try{localStorage.removeItem(k)}catch(e){}};
 const addDays=(d,n)=>{const x=parseD(d);x.setDate(x.getDate()+n);return fmtD(x)};
 
 let db=null,S=clone(DEF),LOGS={},BODY={},cur=null,date=todayStr(),tab='today',dirty=false,hasFocus=false,picked=null;
-const APPV='web8';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
+const APPV='web9';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
 let ui={},chain=Promise.resolve(),saveT=null,bodyT=null,setT=null,pend=new Set(),bodyDate=date,rest=null,restTick=null;
 
 /* ---------- sync status ---------- */
@@ -258,7 +260,7 @@ function flushNow(){
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushNow()});
 window.addEventListener('pagehide',flushNow);
 function flush(){
-  if(!cur)return;stamp();lsSet('gl:log:'+cur.date,cur);
+  if(!cur||stale)return;stamp();lsSet('gl:log:'+cur.date,cur);
   if(!db){dirty=false;setSync('local');return}
   const snap=clone(cur);(seen[snap.date]||(seen[snap.date]=new Set())).add(snap.updatedAt);
   chain=chain.then(()=>db.doc('logs/'+snap.date).set(snap)).then(()=>{
@@ -267,11 +269,11 @@ function flush(){
   }).catch(e=>setSync('err',e));
 }
 function saveSettings(){
-  lsSet('gl:settings',S);
+  if(stale)return;lsSet('gl:settings',S);
   if(db)chain=chain.then(()=>db.doc('settings/main').set(clone(S))).then(()=>setSync('ok')).catch(e=>setSync('err',e));
 }
 function saveBody(d){
-  d=d||bodyDate;pend.delete(d);const b=BODY[d];if(!b)return;b.updatedAt=Date.now();lsSet('gl:body:'+d,b);
+  d=d||bodyDate;pend.delete(d);const b=BODY[d];if(!b||stale)return;b.updatedAt=Date.now();lsSet('gl:body:'+d,b);
   if(db){const snap=clone(b);chain=chain.then(()=>db.doc('body/'+d).set(snap)).then(()=>setSync('ok')).catch(e=>setSync('err',e))}
   else setSync('local');
 }
@@ -303,10 +305,20 @@ function render(){
   render0();
   if(key){const el=document.querySelector('#view '+key);if(el){const d=el.getBoundingClientRect().top-top;if(Math.abs(d)>1)window.scrollBy(0,d)}}
 }
+function safeHtml(){
+  if(stale)return`<div class="card" style="border-color:var(--warn)"><b>다른 창에서 새 버전이 열렸습니다</b><div class="mute" style="margin:4px 0 8px">이 창은 옛 버전이라 기록을 덮어쓰지 않도록 저장을 멈췄습니다. 이 창을 닫거나 새로고침하세요.</div><button class="btn pri" data-a="reload">새로고침</button></div>`;
+  let h='';
+  if(lsFail&&!db)h+=`<div class="card" style="border-color:var(--warn)"><b>⚠ 이 브라우저에 저장하지 못했습니다</b><div class="mute" style="margin:4px 0 8px">방금 기록이 저장되지 않았을 수 있습니다. 개인정보 보호(시크릿) 모드이거나 저장 공간이 부족할 때 생깁니다. 지금 백업을 저장하고, 일반 모드에서 다시 여세요.</div><button class="btn pri" data-a="export">지금 백업 저장</button></div>`;
+  if(BADK.size&&!db)h+=`<div class="card" style="border-color:var(--warn)"><b>읽지 못한 저장 데이터 ${BADK.size}개</b><div class="mute" style="margin:4px 0 8px">형식이 깨진 데이터가 있어 화면에 빠져 있습니다. 지우지 않고 그대로 두었고, 덮어쓰지도 않습니다: ${[...BADK].slice(0,4).map(esc).join(', ')}${BADK.size>4?' …':''}</div><div class="row"><button class="btn" data-a="export">지금 백업 저장</button><button class="btn" data-a="badok" style="${ui.badok?'background:var(--acc);color:var(--acc-fg)':''}">${ui.badok?'정말 덮어쓰기 허용':'무시하고 덮어쓰기 허용'}</button></div></div>`;
+  return h;
+}
+function safeBar(){const v=$('#view');if(!v)return;const o=document.getElementById('safebar');const h=safeHtml();if(o)o.outerHTML=h?`<div id="safebar">${h}</div>`:'';else if(h)v.insertAdjacentHTML('afterbegin',`<div id="safebar">${h}</div>`)}
 function render0(){
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===tab));
-  $('#view').innerHTML={today:vToday,hist:vHist,body:vBody,prof:vProf,set:()=>setNavWrap(vSet())}[tab]();
+  const sh=safeHtml();
+  $('#view').innerHTML=(sh?`<div id="safebar">${sh}</div>`:'')+{today:vToday,hist:vHist,body:vBody,prof:vProf,set:()=>setNavWrap(vSet())}[tab]();
 }
+window.addEventListener('storage',e=>{if(e.key==='gl:appv'&&e.newValue){let v='';try{v=JSON.parse(e.newValue)}catch(x){}if(verN(v)>verN(APPV)&&!stale){stale=true;render()}}});
 let pickOpen=false;
 function applyPick(pk){if(cur.touched&&stats(cur).done===0){ui={pickask:pk};render();return}picked=pk;cur=draft(date);ui={};fx=null;pickOpen=false;pks=null;render()}
 function pickerHtml(){
@@ -467,7 +479,7 @@ function mergeHints(){
   return Object.values(I).filter(o=>!al[o.k]&&(o.logs||o.prog)).map(o=>{const g=genericOf(I,o);return g?[o.n,g.n]:null}).filter(Boolean).slice(0,6);
 }
 function putLog(d){
-  const L=LOGS[d];if(!L)return;L.updatedAt=Date.now();(seen[d]||(seen[d]=new Set())).add(L.updatedAt);
+  const L=LOGS[d];if(!L||stale)return;L.updatedAt=Date.now();(seen[d]||(seen[d]=new Set())).add(L.updatedAt);
   if(cur&&cur.date===d){cur=clone(L);dirty=false}
   if(!db){lsSet('gl:log:'+d,L);return}
   const snap=clone(L);chain=chain.then(()=>db.doc('logs/'+d).set(snap)).then(()=>setSync('ok')).catch(e=>setSync('err',e));
@@ -856,16 +868,21 @@ async function readImport(file){
 }
 function applyImport(){
   const d=impData;if(!d)return;
+  const keep=['gl:appv','gl:tutDone','gl:iosTip','gl:lastBackup'],old={},clr=()=>{const ks=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('gl:')&&!keep.includes(k))ks.push(k)}ks.forEach(k=>localStorage.removeItem(k))};
+  const say=t=>{const m=$('#impmsg');if(m)m.textContent=t;else toast(t)};
+  try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('gl:'))old[k]=localStorage.getItem(k)}}catch(e){say('저장 공간을 읽을 수 없어 불러오기를 멈췄습니다. 지금 기록은 그대로입니다.');return}
   try{
-    const ks=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('gl:'))ks.push(k)}
-    ks.forEach(k=>localStorage.removeItem(k));
+    clr();
     Object.entries(d.logs||{}).forEach(([k,v])=>localStorage.setItem('gl:log:'+k,JSON.stringify(v)));
     Object.entries(d.body||{}).forEach(([k,v])=>localStorage.setItem('gl:body:'+k,JSON.stringify(v)));
     (d.programs||[]).forEach(p=>{if(p&&p.id)localStorage.setItem('gl:prog:'+p.id,JSON.stringify(p))});
     if(d.settings)localStorage.setItem('gl:settings',JSON.stringify(d.settings));
     if(d.profile)localStorage.setItem('gl:profile',JSON.stringify(d.profile));
     location.reload();
-  }catch(e){$('#impmsg').textContent='저장 실패: 이 브라우저는 저장 공간을 쓸 수 없습니다.'}
+  }catch(e){
+    let ok=true;try{clr();Object.entries(old).forEach(([k,v])=>localStorage.setItem(k,v))}catch(x){ok=false}
+    say(ok?'불러오기 실패(저장 공간 부족 등). 지금 기록은 원래대로 되돌렸습니다.':'불러오기와 되돌리기 모두 실패했습니다. 이 화면을 닫지 말고 "JSON 백업 저장"으로 지금 상태를 먼저 저장하세요.');
+  }
 }
 function vHist(){
   const ds=Object.keys(LOGS).sort().reverse();
@@ -1767,7 +1784,7 @@ async function pbSave(){
   render();window.scrollTo(0,0);
 }
 function saveProfile(){
-  lsSet('gl:profile',PROFILE);
+  if(stale)return;lsSet('gl:profile',PROFILE);
   if(db)chain=chain.then(()=>db.doc('profile/main').set(clone(PROFILE))).then(()=>setSync('ok')).catch(e=>setSync('err',e));
   else setSync('local');
 }
@@ -1938,6 +1955,8 @@ document.addEventListener('click',e=>{
   else if(a==='applyorm'){const P=PROGS[t.dataset.id];if(P&&P.orm){Object.assign(S.orm,P.orm);saveSettings();xlMsg='1RM을 적용했습니다.';render()}}
   else if(a==='pickname'){applySwap(ui.swap,ui.opts[+t.dataset.k])}
   else if(a==='swapok'){const q=$('#swq');applySwap(i,q?fixParen(q.value):'')}
+  else if(a==='reload'){location.reload()}
+  else if(a==='badok'){if(!ui.badok){ui.badok=true;render();return}BADK.clear();ui={};render()}
   else if(a==='lackskip'){const x=(ui.skipOpts||[])[+t.dataset.k];if(x){const e0=x.e;cur.exercises.push({tag:'추가',name:e0.name,free:true,rest:e0.rest||90,sets:e0.sets.filter(q=>q.type!=='warm').map(q=>({tw:q.tw,tr:q.tr,w:q.tw||'',r:/^\d+$/.test(String(q.tr||''))?q.tr:'',rir:'',done:false}))});fx=cur.exercises.length-1;fxAll=false;scheduleSave();render()}}
   else if(a==='mghint'){const h_=mergeHints()[+t.dataset.k];if(h_){ui.mg={src:h_[0],dst:h_[1],ok:false};render()}}
   else if(a==='mgno'){ui.mg=null;render()}
@@ -2150,13 +2169,17 @@ function adopt(){
   else if(tab==='hist'||tab==='body')render();
 }
 async function boot(){
+  {const pv=lsGet('gl:appv','');if(verN(pv)>verN(APPV))stale=true;else lsSet('gl:appv',APPV)}
   S=Object.assign(clone(DEF),lsGet('gl:settings',{}));PROFILE=lsGet('gl:profile',PROFILE);
   cur=draft(date);render();setSync('wait');
   let c=null;
   db=c;
   if(!db){
-    try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith('gl:log:')){const v=JSON.parse(localStorage.getItem(k));if(v)LOGS[k.slice(7)]=v}if(k.startsWith('gl:body:')){const v=JSON.parse(localStorage.getItem(k));if(v)BODY[k.slice(8)]=v}}}catch(e){}
-    try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith('gl:prog:')){const v=JSON.parse(localStorage.getItem(k));if(v)PROGS[v.id]=cleanProg(v)}}}catch(e){}
+    let ks=[];try{for(let i=0;i<localStorage.length;i++)ks.push(localStorage.key(i))}catch(e){}
+    ks.forEach(k=>{if(!k)return;
+      if(k.startsWith('gl:log:')){const v=lsGet(k,null);if(v&&typeof v==='object')LOGS[k.slice(7)]=v}
+      else if(k.startsWith('gl:body:')){const v=lsGet(k,null);if(v&&typeof v==='object')BODY[k.slice(8)]=v}
+      else if(k.startsWith('gl:prog:')){const v=lsGet(k,null);try{if(v&&v.id&&v.weeks)PROGS[v.id]=cleanProg(v)}catch(e){BADK.add(k)}}});
     setSync('local');cur=draft(date);render();return;
   }
   const t=setTimeout(()=>setSync('wait'),10000);
