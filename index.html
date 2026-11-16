@@ -176,7 +176,7 @@ const lsDel=k=>{try{localStorage.removeItem(k)}catch(e){}};
 const addDays=(d,n)=>{const x=parseD(d);x.setDate(x.getDate()+n);return fmtD(x)};
 
 let db=null,S=clone(DEF),LOGS={},BODY={},cur=null,date=todayStr(),tab='today',dirty=false,hasFocus=false,picked=null;
-const APPV='web10';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
+const APPV='web11';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
 const tmo=p=>Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error('서버 응답 없음(20초)')),20000))]);
 let ui={},chain=Promise.resolve(),saveT=null,bodyT=null,setT=null,pend=new Set(),bodyDate=date,rest=null,restTick=null;
 
@@ -2187,14 +2187,14 @@ async function boot(){
   }
   const t=setTimeout(()=>setSync('wait'),10000);
   const err=e=>setSync('err',e);
-  db.doc('settings/main').onSnapshot(s=>{if(s.exists){const d=s.data();S=Object.assign(clone(DEF),d,{orm:Object.assign({},DEF.orm,d.orm||{}),starts:Object.assign({},d.starts||{}),mmap:Object.assign({},d.mmap||{})});lsSet('gl:settings',S);if(!dirty&&!hasFocus){if(!LOGS[date])cur=draft(date);render()}}},err);
-  db.collection('logs').orderBy('date','desc').limit(1000).onSnapshot(q=>{clearTimeout(t);LOGS={};q.docs.forEach(d=>LOGS[d.id]=d.data());if(!q.metadata.fromCache){setSync('ok');recoverLogs()}
+  db.doc('settings/main').onSnapshot(s=>{if(s.exists){const d=clone(s.data());S=Object.assign(clone(DEF),d,{orm:Object.assign({},DEF.orm,d.orm||{}),starts:Object.assign({},d.starts||{}),mmap:Object.assign({},d.mmap||{})});lsSet('gl:settings',S);if(!dirty&&!hasFocus){if(!LOGS[date])cur=draft(date);render()}}},err);
+  db.collection('logs').orderBy('date','desc').limit(1000).onSnapshot(q=>{clearTimeout(t);LOGS={};q.docs.forEach(d=>LOGS[d.id]=clone(d.data()));if(!q.metadata.fromCache){setSync('ok');recoverLogs()}
     Object.keys(LOGS).forEach(d=>{const u=LOGS[d]&&LOGS[d].updatedAt,st_=seen[d]||(seen[d]=new Set());if(st_.has(u))return;st_.add(u);if(firstLogSnap)return;if(cur&&cur.date===d&&u!==cur.updatedAt&&(dirty||hasFocus))conflict=d});
     firstLogSnap=false;
     if(conflict&&cur&&conflict===cur.date&&tab==='today'&&!document.querySelector('[data-a=cfload]'))$('#view').insertAdjacentHTML('afterbegin',conflictHtml());if(!LOGS[date]&&!dirty&&!hasFocus&&tab==='today'){cur=draft(date);render()}else adopt()},err);
-  db.doc('profile/main').onSnapshot(x=>{if(x.exists){PROFILE=Object.assign({records:[],inbody:[]},x.data());lsSet('gl:profile',PROFILE);if(tab==='prof'&&!hasFocus)render()}},err);
-  db.collection('programs').limit(50).onSnapshot(q=>{PROGS={v3:BUILTIN};q.docs.forEach(d=>{const x=d.data();PROGS[d.id]=cleanProg(Object.assign({},x,{id:d.id}))});if(!LOGS[date]&&!dirty&&!hasFocus&&tab==='today')cur=draft(date);if((tab==='set'||tab==='today')&&!hasFocus)render()},err);
-  db.collection('body').orderBy('date','desc').limit(1000).onSnapshot(q=>{const keep={};pend.forEach(d=>{if(BODY[d])keep[d]=BODY[d]});BODY={};q.docs.forEach(d=>BODY[d.id]=d.data());Object.assign(BODY,keep);if(!q.metadata.fromCache)recoverBody();if(tab==='body'&&!hasFocus)render()},err);
+  db.doc('profile/main').onSnapshot(x=>{if(x.exists){PROFILE=Object.assign({records:[],inbody:[]},clone(x.data()));lsSet('gl:profile',PROFILE);if(tab==='prof'&&!hasFocus)render()}},err);
+  db.collection('programs').limit(50).onSnapshot(q=>{PROGS={v3:BUILTIN};q.docs.forEach(d=>{const x=clone(d.data());PROGS[d.id]=cleanProg(Object.assign({},x,{id:d.id}))});if(!LOGS[date]&&!dirty&&!hasFocus&&tab==='today')cur=draft(date);if((tab==='set'||tab==='today')&&!hasFocus)render()},err);
+  db.collection('body').orderBy('date','desc').limit(1000).onSnapshot(q=>{const keep={};pend.forEach(d=>{if(BODY[d])keep[d]=BODY[d]});BODY={};q.docs.forEach(d=>BODY[d.id]=clone(d.data()));Object.assign(BODY,keep);if(!q.metadata.fromCache)recoverBody();if(tab==='body'&&!hasFocus)render()},err);
 }
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 if('serviceWorker' in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('sw.js').catch(()=>{});
