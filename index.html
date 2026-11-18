@@ -176,7 +176,7 @@ const lsDel=k=>{try{localStorage.removeItem(k)}catch(e){}};
 const addDays=(d,n)=>{const x=parseD(d);x.setDate(x.getDate()+n);return fmtD(x)};
 
 let db=null,S=clone(DEF),LOGS={},BODY={},cur=null,date=todayStr(),tab='today',dirty=false,hasFocus=false,picked=null;
-const APPV='web11';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
+const APPV='web12';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
 const tmo=p=>Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error('서버 응답 없음(20초)')),20000))]);
 let ui={},chain=Promise.resolve(),saveT=null,bodyT=null,setT=null,pend=new Set(),bodyDate=date,rest=null,restTick=null;
 
@@ -458,7 +458,7 @@ function statsHtml(st){
 }
 const LIB=['벤치프레스','인클라인 벤치프레스','덤벨 프레스','인클라인 덤벨 프레스','체스트 프레스','케이블 크로스오버','딥스','클로즈그립 벤치프레스','풀업','랫풀다운','언더그립 랫풀다운','원 암 풀다운','시티드 케이블 로우','바벨 로우','덤벨 로우','스쿼트','프론트 스쿼트','일시정지 스쿼트','레그 프레스','레그 익스텐션','레그 컬','불가리안 스플릿 스쿼트','루마니안 데드리프트','컨벤셔널 데드리프트','힙쓰러스트','밀리터리 프레스','덤벨 숄더 프레스','사이드 레터럴 레이즈','벤트오버 레터럴 레이즈','페이스풀','바벨 컬','인클라인 덤벨 컬','해머 컬','케이블 트라이셉스 푸시다운','오버헤드 트라이셉스 익스텐션','라잉 트라이셉스 익스텐션','카프 레이즈'];
 const norm=s=>cleanName(s).replace(/\s+/g,'').toLowerCase();
-const e1=(w,r,rir)=>{w=+w;r=+r;if(!w||!r)return 0;const x=rir==='4+'?4:(rir===''||rir==null||isNaN(+rir)?0:+rir),n=Math.min(15,r+x);return n<=1?w:w*(1+n/30)};
+const e1=(w,r,rir)=>{w=+w;r=+r;if(!w||!r)return 0;const x=rir==='4+'?4:rir==='5+'?5:(rir===''||rir==null||isNaN(+rir)?0:+rir),n=Math.min(15,r+x);return n<=1?w:w*(1+n/30)};
 const EQP=['덤벨','바벨','케이블','머신','스미스머신','원판','이지바','케틀벨','밴드'];
 function aliasName(n){const a=S.alias&&S.alias[norm(n||'')];return a||n}
 function nameIndex(){
@@ -593,7 +593,7 @@ function vEx(e,i){
       <button class="ok" data-a="done" data-i="${i}" data-j="${j}" aria-label="완료">✓</button>
       ${shortfall(s)&&!e.attempt?`<div class="tgt">미달 사유 ${['힘 부족','통증','폼 무너짐','시간 부족','기타'].map(v=>`<button class="chip" style="min-height:40px;${s.why===v?'background:var(--acc);color:var(--acc-fg);border-color:var(--acc)':''}" data-a="why" data-i="${i}" data-j="${j}" data-v="${v}">${v}</button>`).join(' ')}</div>`:''}
       ${s.pr?`<div class="tgt" style="color:var(--accT);font-weight:700">🏆 ${esc(s.pr)}</div>`:''}
-      ${s.done&&s.rir==='4+'&&s.type!=='warm'&&!e.attempt?`<div class="tgt">RIR 4+ · 너무 쉬운 세트로 보고 주간 부위별 세트에 세지 않음</div>`:''}
+      ${s.done&&s.rir==='5+'&&s.type!=='warm'&&!e.attempt?`<div class="tgt">RIR 5+ · 너무 쉬운 세트로 보고 주간 부위별 세트에 세지 않음</div>`:''}
       ${s.tw||s.tr?`<div class="tgt">목표 ${s.tw?nf(s.tw)+'kg':''}${s.tw&&s.tr?' × ':''}${esc(s.tr||'')}${pl?` <span class="plates">· ${pl}</span>`:''}</div>`:''}
     </div>`;
   });
@@ -611,7 +611,7 @@ function summary(doc){
     if(!ss.length&&!e.sets.some(q=>q.fail)){t+=`- ${e.name}: 안 함\n`;return}
     t+=`- ${e.ss?'['+'슈퍼세트'+'] ':''}${e.name}${e.orig?' (원래 '+e.orig+' → 교체)':''}: ${ss.map(s=>`${{warm:'웜업 ',drop:'드롭 ',fail:'한계 '}[s.type]||''}${setTxt(e,s)}${s.why?'['+s.why+']':''}${s.pr?' 🏆':''}`).join(' / ')}`;
     const rr=ss.map(s=>s.rir).filter(x=>x!==''&&x!=null);
-    if(rr.length)t+=` (RIR ${ss.map(s=>s.rir===''||s.rir==null?'-':s.rir).join(',')})`;
+    if(rr.length)t+=` (RIR ${ss.map(s=>s.rir===''||s.rir==null?'-':s.rir==='4+'?'4':s.rir).join(',')})`;
     t+='\n';
     if(e.sets.some(q=>q.fail))t+=`  실패: ${e.sets.filter(q=>q.fail).map(q=>nf(q.w)+'kg').join(', ')}\n`;
     if(e.memo)t+=`  메모: ${e.memo}\n`;
@@ -703,7 +703,7 @@ function setHead(u){
 }
 function setInputs(e,s,i,j){
   const u=unitOf(e),ax=`data-i="${i}" data-j="${j}"`;
-  const rir=e.attempt?`<button class="xk" data-a="fail" ${ax}>${s.fail?'실패':'실패?'}</button>`:`<select data-f="rir" ${ax} class="${s.rirAuto?'auto':''}">${['','0','1','2','3','4+'].map(o=>`<option ${String(s.rir)===o?'selected':''}>${o}</option>`).join('')}</select>`;
+  const rir=e.attempt?`<button class="xk" data-a="fail" ${ax}>${s.fail?'실패':'실패?'}</button>`:`<select data-f="rir" ${ax} class="${s.rirAuto?'auto':''}">${[['',''],['0','0'],['1','1'],['2','2'],['3','3'],['4+','4'],['5+','5+']].map(([o,l])=>`<option value="${o}" ${String(s.rir)===o?'selected':''}>${l}</option>`).join('')}</select>`;
   const reps=`<input type="number" inputmode="numeric" data-f="r" ${ax} value="${esc(s.r)}" placeholder="${esc(/^\d+$/.test(String(s.tr))?s.tr:(s.lr||''))}">`;
   if(u==='t')return`<input type="text" inputmode="numeric" data-f="sec" ${ax} value="${esc(secFmt(s.sec))}" placeholder="${esc(s.tr||'1:30')}" style="grid-column:span 2"><span></span>`;
   if(u==='td')return`<input type="number" inputmode="decimal" step="0.5" data-f="min" ${ax} value="${esc(s.min??'')}" placeholder="${esc(tMin(s.tr)||'분')}"><input type="number" inputmode="decimal" step="0.1" data-f="km" ${ax} value="${esc(s.km??'')}" placeholder="km"><span></span>`;
@@ -758,7 +758,7 @@ function weekSets(mon){
   const tot={},unk=new Set();MUS.forEach(m=>tot[m]=0);
   Object.keys(all).filter(d=>d>=mon&&d<=end).forEach(d=>(all[d].exercises||[]).forEach(e=>{
     if(e.check||e.tag==='워밍업')return;
-    const n=e.sets.filter(q=>q.done&&q.rir!=='4+'&&q.type!=='warm').length;if(!n)return;
+    const n=e.sets.filter(q=>q.done&&q.rir!=='5+'&&q.type!=='warm').length;if(!n)return;
     const mm=muscleOf(e.name);if(!mm){unk.add(e.name);return}
     mm.forEach(([m,wt])=>{tot[m]+=n*wt});
   }));
@@ -769,7 +769,7 @@ function muscleCard(){
   return`<div class="card"><span class="tag">주간 부위별 세트 수 (목표 10세트 이상)</span>
   <div class="row" style="justify-content:space-between;margin:6px 0"><button class="btn" data-a="pw" data-n="-1">◀</button><b>${mon.slice(5)} ~ ${r.end.slice(5)}${(ui.pw||0)===0?' (이번 주)':''}</b><button class="btn" data-a="pw" data-n="1" ${(ui.pw||0)>=0?'disabled':''}>▶</button></div>
   ${MUS.map(m=>{const v=r.tot[m];return`<div class="mrow"><span>${m}</span><div class="mbar"><i style="width:${Math.min(100,v/10*100).toFixed(0)}%${v>=10?';background:var(--ok)':''}"></i></div><b class="num" style="text-align:right">${nf(v)}/10</b></div>`}).join('')}
-  <div class="mute">주요 근육 1세트, 보조 근육 0.5세트로 센 대략치입니다. 워밍업·RIR 4+ 세트는 제외.</div>
+  <div class="mute">주요 근육 1세트, 보조 근육 0.5세트로 센 대략치입니다. 워밍업·RIR 5+ 세트는 제외.</div>
   ${r.unk.length?`<div class="panel"><b>분류 못 한 종목</b><div class="mute">한 번만 고르면 저장되고 이후 자동 집계됩니다.</div>${r.unk.map((n,k)=>`<div class="row" style="margin-top:6px"><span style="flex:1;min-width:0">${esc(n)}</span><select data-mi="${k}" style="width:130px"><option value="">선택…</option>${MUS.map(m=>`<option>${m}</option>`).join('')}<option>집계 제외</option></select></div>`).join('')}</div>`:''}</div>`;
 }
 function adherenceCard(){
@@ -1297,7 +1297,7 @@ function aiDigest(wk){
     const ss=(e.sets||[]).filter(setDoneAny);if(!ss.length)return;const u=unitOf(e);
     const o=ex[n]||(ex[n]={n,sets:0,ses:[],best:null});o.sets+=ss.length;
     const g=[];ss.forEach(q=>{const k=u==='t'||u==='td'?setTxt(e,q):(+q.w?nf(+q.w):'맨몸')+'×'+nf(+q.r),l=g[g.length-1];if(l&&l.k===k)l.c++;else g.push({k,c:1})});
-    const rir=ss.map(q=>q.rir).filter(v=>v!==''&&v!=null);
+    const rir=ss.map(q=>q.rir==='4+'?'4':q.rir).filter(v=>v!==''&&v!=null);
     o.ses.push(md(d)+': '+g.map(x=>x.k+(x.c>1?'×'+x.c:'')).join(', ')+(rir.length?' (RIR '+rir.join('/')+')':'')+(ss.some(q=>q.type==='fail')?' 실패세트':''));
     ss.forEach(q=>{if(+q.w){const v=e1(q.w,q.r,q.rir);if(!o.best||v>o.best.e)o.best={e:v,d}}});
   }));
@@ -2046,7 +2046,7 @@ function detectPR(e,s){
 }
 function dayMuscles(doc){
   const tot={};MUS.forEach(m=>tot[m]=0);
-  (doc.exercises||[]).forEach(e=>{if(e.check||e.tag==='워밍업')return;const n=(e.sets||[]).filter(q=>q.done&&q.rir!=='4+'&&q.type!=='warm').length;if(!n)return;const mm=muscleOf(e.name);if(mm)mm.forEach(([m,wt])=>{tot[m]+=n*wt})});
+  (doc.exercises||[]).forEach(e=>{if(e.check||e.tag==='워밍업')return;const n=(e.sets||[]).filter(q=>q.done&&q.rir!=='5+'&&q.type!=='warm').length;if(!n)return;const mm=muscleOf(e.name);if(mm)mm.forEach(([m,wt])=>{tot[m]+=n*wt})});
   return tot;
 }
 function finishHtml(){
