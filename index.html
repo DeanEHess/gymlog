@@ -88,7 +88,7 @@ input[type=number]{text-align:center}
 .bigchips{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin:8px 0}
 .bigchips button{min-height:52px;border:1px solid var(--line);border-radius:10px;background:var(--card);font-size:15px;padding:8px;color:var(--fg)}
 .bigchips button[aria-pressed=true]{background:var(--acc);color:var(--acc-fg);border-color:var(--acc)}
-.fxlist button.r{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;padding:12px 4px;border:0;border-top:1px solid var(--line);background:none;text-align:left;font-size:15px;color:var(--fg)}
+.fxlist .r{display:flex;align-items:center;gap:6px;border-top:1px solid var(--line)}.fxlist .r .nm{flex:1;min-width:0;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 4px;border:0;background:none;text-align:left;font-size:15px;color:var(--fg)}.fxlist .mv{flex:none;width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--inp);color:var(--fg);font-size:16px}.fxlist .mv:disabled{opacity:.3}
 .panel{margin-top:10px;padding:10px;border:1px dashed var(--line);border-radius:8px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
 .chip{background:var(--inp);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:14px;min-height:40px}
@@ -176,7 +176,7 @@ const lsDel=k=>{try{localStorage.removeItem(k)}catch(e){}};
 const addDays=(d,n)=>{const x=parseD(d);x.setDate(x.getDate()+n);return fmtD(x)};
 
 let db=null,S=clone(DEF),LOGS={},BODY={},cur=null,date=todayStr(),tab='today',dirty=false,hasFocus=false,picked=null;
-const APPV='web12';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
+const APPV='web13';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
 const tmo=p=>Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error('서버 응답 없음(20초)')),20000))]);
 let ui={},chain=Promise.resolve(),saveT=null,bodyT=null,setT=null,pend=new Set(),bodyDate=date,rest=null,restTick=null;
 
@@ -349,6 +349,7 @@ function vTodayList(){
   }
   h=ormqHtml()+(conflict&&conflict===date?conflictHtml():'')+h;
   if(!cur.free&&cur.tip)h+=`<details class="card" style="padding:4px 12px"><summary class="mute">💡 ${cur.week}주차 팁</summary><div class="mute" style="margin:0 0 8px">${esc(String(cur.tip).replace(/^💡\s*/,''))}</div></details>`;
+  if(ui.add)h+=addPanel();
   cur.exercises.forEach((e,i)=>h+=vEx(e,i));
   if(!cur.free||cur.exercises.length){
     h+=(cur.finishedAt?finishHtml():'')+`<div class="row" style="margin-bottom:12px"><button class="btn" data-a="addex">+ 운동 추가</button></div>
@@ -411,13 +412,13 @@ function vTodayFocus(){
   }
   if(pickOpen)h+=pickSheet();
   if(ui.pickask)h+=`<div class="panel"><b>편집한 내용이 사라집니다</b><div class="mute">운동 교체·메모·세트 편집이 새로 불러올 운동으로 대체됩니다.</div><div class="row" style="margin-top:6px"><button class="btn pri" data-a="pickok">바꾸기</button><button class="btn" data-a="pickno">취소</button></div></div>`;
-  h+='</div>'+lackCard();
+  h+='</div>'+lackCard()+(ui.add?addPanel():'');
   h=ormqHtml()+(conflict&&conflict===date?conflictHtml():'')+h;
   if(!n)return h;
   h+=`<div class="fxbar"><span>${i<n?'종목 '+(i+1)+' / '+n:'마무리'} · 세트 ${st.done}/${st.total}</span><button class="btn" data-a="fxall" style="min-height:36px;padding:4px 12px">${fxAll?'목록 닫기':'전체 보기'}</button></div>
   <div class="dots">${cur.exercises.map((e,k)=>`<button data-a="fxgo" data-i="${k}" class="${k===i?'on':exDone(e)?'ok':''}" aria-label="${esc(cleanName(e.name)||'운동 '+(k+1))}">${k+1}</button>`).join('')}<button data-a="fxgo" data-i="${n}" class="${i===n?'on':''}">끝</button></div>`;
   if(fxAll){
-    h+=`<div class="card fxlist">${cur.exercises.map((e,k)=>{const dn=e.check?(e.done?1:0):e.sets.filter(q=>q.done).length,tt=e.check?1:e.sets.length;return`<button class="r" data-a="fxgo" data-i="${k}"><span style="min-width:0">${k+1}. ${esc(cleanName(e.name)||'(이름 없음)')}</span><span class="mute">${dn}/${tt}${exDone(e)?' ✓':''}</span></button>`}).join('')}
+    h+=`<div class="card fxlist">${cur.exercises.map((e,k)=>{const dn=e.check?(e.done?1:0):e.sets.filter(q=>q.done).length,tt=e.check?1:e.sets.length;return`<div class="r"><button class="nm" data-a="fxgo" data-i="${k}"><span style="min-width:0">${k+1}. ${esc(cleanName(e.name)||'(이름 없음)')}${e.ss?` <span class="tag">슈퍼세트 ${ssLabel(e.ss)}</span>`:''}</span><span class="mute">${dn}/${tt}${exDone(e)?' ✓':''}</span></button><button class="mv" data-a="mvex" data-i="${k}" data-d="-1" ${k?'':'disabled'} aria-label="위로">↑</button><button class="mv" data-a="mvex" data-i="${k}" data-d="1" ${k<cur.exercises.length-1?'':'disabled'} aria-label="아래로">↓</button></div>`}).join('')}
     <div class="row" style="margin-top:8px"><button class="btn" data-a="addex">+ 운동 추가</button></div></div>`;
   }
   if(i<n){
@@ -542,7 +543,7 @@ function fixParen(n){return String(n||'').replace(/\s*[\(（]\s*([^\)）]*?)\s*[
 function canonName(n){const k=norm(n);if(!k)return n;const hit=allNames().find(x=>norm(x)===k);return hit||n}
 function applySwap(i,name){
   const e=cur.exercises[i];name=canonName(String(name||'').trim());if(!name)return;
-  if(!e.orig)e.orig=e.name;e.name=name;delete e.lift;e.swapped=true;
+  if(!e.free){if(!e.orig&&e.name!==name)e.orig=e.name;e.swapped=true}e.name=name;delete e.lift;
   const last=hist(name).filter(h=>h.date!==cur.date).pop();
   e.sets.forEach(s=>{if(s.done)return;s.w='';s.r='';if(last)s.tw=last.top.w;else delete s.tw});
   delete e.sug;applySug(e,cur.date);
@@ -562,21 +563,23 @@ function anaHtml(e){
 function vEx(e,i){
   const last=hist(e.name).filter(h=>h.date!==cur.date).pop();
   let h=`<div class="card ${e.ss?'ss':''}"><div class="exh"><div style="min-width:0;flex:1"><div class="tag">${esc(e.tag||'')}${e.ss?` · 슈퍼세트 ${ssLabel(e.ss)}`:''}${e.orig?` · 원래 ${esc(e.orig)}`:''}</div>
-    ${e.free?`<input data-nm="1" data-i="${i}" value="${esc(e.name)}" placeholder="운동 이름" style="font-weight:700;margin:4px 0 2px"><div class="mute" style="font-size:12px">${exTag(e.name)}<button class="btn" data-a="exfnew" data-i="${i}" data-src="free" style="min-height:30px;padding:2px 10px;font-size:12px;margin-left:4px">${exDef(e.name)?'종목 설정 바꾸기':'종목 설정(도구·부위·단위)'}</button></div>`:`<h2>${esc(cleanName(e.name))}</h2>${exDef(e.name)?`<div class="mute" style="font-size:12px">${exTag(e.name)}</div>`:''}`}
+    ${e.free&&(!e.name||ui.ren===i)?`<input data-nm="1" data-i="${i}" value="${esc(e.name)}" placeholder="운동 이름" style="font-weight:700;margin:4px 0 2px"><div class="mute" style="font-size:12px">${exTag(e.name)}<button class="btn" data-a="exfnew" data-i="${i}" data-src="free" style="min-height:30px;padding:2px 10px;font-size:12px;margin-left:4px">${exDef(e.name)?'종목 설정 바꾸기':'종목 설정(도구·부위·단위)'}</button></div>`:`<h2>${esc(cleanName(e.name))}</h2>${exDef(e.name)?`<div class="mute" style="font-size:12px">${exTag(e.name)}</div>`:''}`}
     ${unitOf(e)!=='wr'?lastTxt(e):last?`<div class="mute">지난번 ${nf(last.top.w)}×${last.top.r} · e1RM ${nf(last.top.e)}</div>`:''}
     ${e.sug?`<div class="mute" style="color:var(--warn)">${esc(e.sug)}</div>`:''}
     ${e.lift&&e.tag==='메인'&&!e.attempt&&!e.sets.some(q=>q.type==='warm')&&warmup((e.sets[0]||{}).tw)?`<div class="mute">워밍업 제안 ${warmup(e.sets[0].tw)}</div>`:''}</div>
     
     <button class="ib ${ui.menu===i?'on':''}" data-a="menu" data-i="${i}" aria-label="더보기">⋮</button></div>`;
-  if(ui.swap===i)h+=`<div class="panel"><input id="swq" data-sw="${i}" placeholder="운동 이름 검색 또는 직접 입력" value="${esc(ui.q||'')}" autocomplete="off"><div class="chips" id="chips">${chipsHtml(ui.q||'')}</div><button class="btn pri" data-a="swapok" data-i="${i}">입력한 이름으로 교체</button> <button class="btn" data-a="exfnew" data-i="${i}" data-src="swap">+ 새 종목 만들기</button><div class="mute" style="margin-top:4px">세트 수는 유지됩니다</div>${exf&&exf.i===i&&exf.src==='swap'?exFormHtml():''}</div>`;
-  if(e.free&&exf&&exf.i===i&&exf.src==='free')h+=exFormHtml();
+  if(ui.swap===i)h+=`<div class="panel"><input id="swq" data-sw="${i}" placeholder="운동 이름 검색 또는 직접 입력" value="${esc(ui.q||'')}" autocomplete="off"><div class="chips" id="chips">${chipsHtml(ui.q||'')}</div><button class="btn pri" data-a="swapok" data-i="${i}">${e.free?'입력한 이름으로 바꾸기':'입력한 이름으로 교체'}</button> <button class="btn" data-a="exfnew" data-i="${i}" data-src="swap">+ 새 종목 만들기</button><div class="mute" style="margin-top:4px">세트 수는 유지됩니다</div>${exf&&exf.i===i&&exf.src==='swap'?exFormHtml():''}</div>`;
+  if(exf&&exf.i===i&&exf.src==='free')h+=exFormHtml();
   if(ui.menu===i){
     const hasNext=i<cur.exercises.length-1;
     const canWarm=e.lift&&e.tag==='메인'&&!e.attempt&&!e.sets.some(q=>q.type==='warm')&&warmup((e.sets[0]||{}).tw);
-    h+=`<div class="panel row"><button class="btn" data-a="swap" data-i="${i}">운동 교체</button><button class="btn" data-a="addset" data-i="${i}">+ 세트</button>${e.sets.length?`<button class="btn" data-a="delset" data-i="${i}" style="${ui.dels===i?'background:var(--acc);color:var(--acc-fg)':''}">${ui.dels===i?'완료한 세트인데 삭제?':'− 세트'}</button>`:''}${canWarm?`<button class="btn" data-a="addwarm" data-i="${i}">워밍업 세트 추가</button>`:''}<button class="btn" data-a="memo" data-i="${i}">${e.memo?'메모 수정':'메모 추가'}</button><button class="btn" data-a="ana" data-i="${i}">기록 분석 · e1RM</button>
-      ${e.ss?`<button class="btn" data-a="ss" data-i="${i}">슈퍼세트 해제</button>`:hasNext?`<button class="btn" data-a="ss" data-i="${i}">다음 운동과 슈퍼세트</button>`:''}
+    const n_=cur.exercises.length;
+    h+=`<div class="panel row">${i?`<button class="btn" data-a="mvex" data-i="${i}" data-d="-1">↑ 위로</button>`:''}${i<n_-1?`<button class="btn" data-a="mvex" data-i="${i}" data-d="1">↓ 아래로</button>`:''}<button class="btn" data-a="swap" data-i="${i}">${e.free?'이름 바꾸기':'운동 교체'}</button><button class="btn" data-a="exfnew" data-i="${i}" data-src="free">종목 설정</button><button class="btn" data-a="addset" data-i="${i}">+ 세트</button>${e.sets.length?`<button class="btn" data-a="delset" data-i="${i}" style="${ui.dels===i?'background:var(--acc);color:var(--acc-fg)':''}">${ui.dels===i?'완료한 세트인데 삭제?':'− 세트'}</button>`:''}${canWarm?`<button class="btn" data-a="addwarm" data-i="${i}">워밍업 세트 추가</button>`:''}<button class="btn" data-a="memo" data-i="${i}">${e.memo?'메모 수정':'메모 추가'}</button><button class="btn" data-a="ana" data-i="${i}">기록 분석 · e1RM</button>
+      ${n_>1?`<button class="btn" data-a="sspick" data-i="${i}">${e.ss?'슈퍼세트에 운동 더하기':'슈퍼세트로 묶기'}</button>`:''}${e.ss?`<button class="btn" data-a="ss" data-i="${i}">슈퍼세트 해제</button>`:''}
       <button class="btn" data-a="delex" data-i="${i}" style="${ui.del===i?'background:var(--acc);color:var(--acc-fg)':''}">${ui.del===i?'정말 삭제':'운동 삭제'}</button></div>`;
   }
+  if(ui.sspick===i){const os=cur.exercises.map((x,k)=>({x,k})).filter(o=>o.k!==i&&!(e.ss&&o.x.ss===e.ss));h+=`<div class="panel"><b>함께 묶을 운동</b><div class="mute" style="font-size:13px">고른 운동이 이 운동 바로 뒤로 옮겨지고, 세트를 번갈아 하게 됩니다.</div><div class="chips">${os.map(o=>`<button class="chip" data-a="ssjoin" data-i="${i}" data-k="${o.k}">${esc(cleanName(o.x.name)||'(이름 없음)')}</button>`).join('')||'<span class="mute">묶을 운동이 없습니다.</span>'}</div></div>`}
   if(e.memo||ui.memo===i)h+=`<textarea data-mm="${i}" placeholder="이 운동 메모 (셋업, 통증, 다음에 올릴 무게…)" style="margin-top:8px">${esc(e.memo||'')}</textarea>`;
   if(ui.ana===i)h+=anaHtml(e);
   if(e.check){
@@ -744,7 +747,8 @@ function exfSave(){
   S.mmap[k]=f.m==='없음'?[]:[[f.m,1]].concat(S.ex[k].m2.map(x=>[x,.5]));
   saveSettings((ok,e)=>{if(!ok)toast('종목 저장 실패 — '+(e&&e.message?e.message:'연결 확인')+'. 다시 저장하세요')});
   const i=f.i,src=f.src;exf=null;
-  if(i!=null&&cur&&cur.exercises[i]){if(src==='swap'){applySwap(i,n)}else{cur.exercises[i].name=n;scheduleSave()}}
+  if(i!=null&&cur&&cur.exercises[i]){const e_=cur.exercises[i];if(src==='swap'||(!e_.free&&norm(e_.name)!==norm(n))){applySwap(i,n)}else{e_.name=n;scheduleSave()}}
+  else if(src==='add'&&cur){ui={};lackAdd(n)}
   toast('종목 저장: '+n);render();
 }
 function exLibCard(){
@@ -1929,7 +1933,7 @@ document.addEventListener('click',e=>{
   else if(a==='pbcopyw'){const it_=pb.days[+t.dataset.di].items[+t.dataset.ii],v_=(it_.w||[])[0]||'';it_.w=Array.from({length:pb.nw},()=>v_);render()}
   else if(a==='pbsave'){pbSave()}
   else if(a==='exfnew'){const i_=t.dataset.i!=null?+t.dataset.i:null,src=t.dataset.src||'set';let nm='';
-    if(src==='swap'){const q=$('#swq');nm=q?q.value.trim():''}else if(src==='free'&&i_!=null)nm=cur.exercises[i_].name||'';
+    if(src==='swap'||src==='add'){const q=$('#swq');nm=q?q.value.trim():''}else if(src==='free'&&i_!=null)nm=cur.exercises[i_].name||'';
     exfOpen(nm,i_,src);render()}
   else if(a==='exfedit'){const d=(S.ex||{})[t.dataset.k];if(d){exfOpen(d.n,null,'set');render()}}
   else if(a==='exfdel'){const k=t.dataset.k;if(ui.exdel!==k){ui.exdel=k;render();return}if(S.ex)delete S.ex[k];if(S.mmap)delete S.mmap[k];saveSettings();ui={};render()}
@@ -1956,7 +1960,7 @@ document.addEventListener('click',e=>{
     picked=null;cur=draft(date);render()}
   else if(a==='useprog'){S.progId=t.dataset.id;saveSettings();picked=null;cur=draft(date);xlMsg='';render()}
   else if(a==='applyorm'){const P=PROGS[t.dataset.id];if(P&&P.orm){Object.assign(S.orm,P.orm);saveSettings();xlMsg='1RM을 적용했습니다.';render()}}
-  else if(a==='pickname'){applySwap(ui.swap,ui.opts[+t.dataset.k])}
+  else if(a==='pickname'){const nm=ui.opts[+t.dataset.k];if(ui.add){ui={};lackAdd(nm)}else applySwap(ui.swap,nm)}
   else if(a==='swapok'){const q=$('#swq');applySwap(i,q?fixParen(q.value):'')}
   else if(a==='reload'){location.reload()}
   else if(a==='badok'){if(!ui.badok){ui.badok=true;render();return}BADK.clear();ui={};render()}
@@ -1967,7 +1971,12 @@ document.addEventListener('click',e=>{
   else if(a==='aldel'){if(S.alias){delete S.alias[t.dataset.k];saveSettings();render()}}
   else if(a==='lackm'){ui.lack=ui.lack===t.dataset.v?null:t.dataset.v;render()}
   else if(a==='lackadd'){const n=(ui.lackOpts||[])[+t.dataset.k];if(n)lackAdd(n)}
-  else if(a==='addex'){cur.exercises.push({tag:'추가',name:'',free:true,rest:90,sets:[{w:'',r:'',rir:'',done:false}]});fx=cur.exercises.length-1;fxAll=false;scheduleSave();render()}
+  else if(a==='addex'){ui={add:true,q:''};exf=null;render();const q=$('#swq');if(q){q.scrollIntoView({block:'center'});q.focus()}}
+  else if(a==='addok'){const q=$('#swq'),nm=canonName(fixParen(q?q.value:''));if(!nm){const q2=$('#swq');if(q2)q2.focus();return}ui={};lackAdd(nm)}
+  else if(a==='addno'){ui={};exf=null;render()}
+  else if(a==='mvex'){const d=+t.dataset.d;mvEx(i,d);ui=ui.menu===i?{menu:i+d}:{};render()}
+  else if(a==='sspick'){ui=ui.sspick===i?{menu:i}:{menu:i,sspick:i};render()}
+  else if(a==='ssjoin'){ssJoin(i,+t.dataset.k);ui={};render()}
   else if(a==='sum'){
     const txt=summary(cur);
     $('#sumbox').innerHTML=`<pre id="sumtxt">${esc(txt)}</pre><div class="row" style="margin-top:8px"><button class="btn" data-a="copy">복사</button></div>`;
@@ -2087,6 +2096,20 @@ function lackCard(){
   }
   if(r.unk.length)h+=`<div class="mute" style="margin-top:6px">부위를 모르는 종목 ${r.unk.length}개는 빠져 있습니다(프로필 탭 주간 부위별 세트에서 지정).</div>`;
   return h+'</div>';
+}
+function addPanel(){
+  return`<div class="panel" id="addp"><b>운동 추가</b><input id="swq" data-sw="-1" placeholder="운동 이름 검색 또는 직접 입력" value="${esc(ui.q||'')}" autocomplete="off" style="margin-top:6px"><div class="chips" id="chips">${chipsHtml(ui.q||'')}</div><div class="row"><button class="btn pri" data-a="addok">입력한 이름으로 추가</button><button class="btn" data-a="exfnew" data-src="add">+ 새 종목 만들기</button><button class="btn" data-a="addno">취소</button></div>${exf&&exf.src==='add'?exFormHtml():''}</div>`;
+}
+function mvEx(i,d){
+  const L=cur.exercises,j=i+d;if(j<0||j>=L.length)return;const f=fx!=null?L[fx]:null;[L[i],L[j]]=[L[j],L[i]];
+  if(f)fx=L.indexOf(f);scheduleSave();
+}
+function ssJoin(i,k){
+  const L=cur.exercises,a=L[i],b=L[k];if(!a||!b)return;const f=fx!=null?L[fx]:null;
+  const g=a.ss||b.ss||Date.now(),g2=b.ss&&b.ss!==g?b.ss:null;
+  L.forEach(x=>{if(g2&&x.ss===g2)x.ss=g});a.ss=g;b.ss=g;
+  L.splice(L.indexOf(b),1);let at=-1;L.forEach((x,q)=>{if(x.ss===g)at=q});L.splice(at+1,0,b);
+  if(f)fx=L.indexOf(f);fixSS();scheduleSave();
 }
 function lackAdd(name){
   const last=hist(name).filter(x=>x.date!==date).pop();
