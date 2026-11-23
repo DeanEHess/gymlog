@@ -176,7 +176,7 @@ const lsDel=k=>{try{localStorage.removeItem(k)}catch(e){}};
 const addDays=(d,n)=>{const x=parseD(d);x.setDate(x.getDate()+n);return fmtD(x)};
 
 let db=null,S=clone(DEF),LOGS={},BODY={},cur=null,date=todayStr(),tab='today',dirty=false,hasFocus=false,picked=null;
-const APPV='web13';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
+const APPV='web14';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
 const tmo=p=>Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error('서버 응답 없음(20초)')),20000))]);
 let ui={},chain=Promise.resolve(),saveT=null,bodyT=null,setT=null,pend=new Set(),bodyDate=date,rest=null,restTick=null;
 
@@ -210,7 +210,7 @@ function build(week,day,prog,d){
     const lifts=b.r.filter(r=>r.k);
     if(lifts.length){
       ex.push({tag,name:aliasName(name),lift:lifts[0].k,attempt:tag==='본 시도',np:lifts.length,rest:/보조/.test(tag)?90:150,sets:lifts.map(r=>{
-        const tw=mround(S.orm[r.k]*r.p);return{tw,tr:r.n,w:tw,r:r.n,rir:'',done:false,note:r.m||''}})});
+        const o_=+S.orm[r.k],tw=o_>0?mround(o_*r.p):'';return{tw,tr:r.n,w:tw,r:r.n,rir:'',done:false,note:r.m||''}})});
     }else b.r.forEach(r=>{
       const m=String(r.s||'').match(/^(\d+)\s*×\s*(.+)$/);
       if(m){const e={tag:'보조B',name:aliasName(r.l),spec:r.s,note:r.m||'',np:+m[1],rest:60,sets:Array.from({length:+m[1]},()=>({tr:m[2],w:'',r:'',rir:'',done:false}))};applySug(e,d);ex.push(e)}
@@ -252,7 +252,13 @@ function stamp(){
   else if(st.done===0&&!cur.exercises.some(e=>(e.sets||[]).some(q=>q.fail))){delete cur.startedAt;delete cur.endedAt}
   if(!cur.minutesManual){const m=autoMinutes(cur);if(m)cur.minutes=m;else delete cur.minutes}
 }
-function scheduleSave(){dirty=true;cur.touched=true;stamp();lsSet('gl:log:'+cur.date,cur);setSync('busy');clearTimeout(saveT);saveT=setTimeout(()=>{saveT=null;flush()},600)}
+function saveLog(){
+  const k='gl:log:'+cur.date;
+  if(!db&&!stale&&BADK.has(k)){let raw=null;try{raw=localStorage.getItem(k)}catch(e){}
+    if(raw!=null){if(cur.brokenRaw==null)cur.brokenRaw=raw;BADK.delete(k);safeBar();toast('이 날짜의 깨진 데이터는 지우지 않고 이 날 기록 안에 보존했습니다.')}}
+  return lsSet(k,cur);
+}
+function scheduleSave(){dirty=true;cur.touched=true;stamp();saveLog();setSync('busy');clearTimeout(saveT);saveT=setTimeout(()=>{saveT=null;flush()},600)}
 function flushNow(){
   if(saveT){clearTimeout(saveT);saveT=null;if(dirty&&cur)flush()}
   if(bodyT){clearTimeout(bodyT);bodyT=null;[...pend].forEach(d=>saveBody(d))}
@@ -261,8 +267,8 @@ function flushNow(){
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushNow()});
 window.addEventListener('pagehide',flushNow);
 function flush(){
-  if(!cur||stale)return;stamp();lsSet('gl:log:'+cur.date,cur);
-  if(!db){dirty=false;setSync('local');return}
+  if(!cur||stale)return;stamp();const okL=saveLog();
+  if(!db){dirty=false;setSync(okL?'local':'err');if(!okL)safeBar();return}
   const snap=clone(cur);(seen[snap.date]||(seen[snap.date]=new Set())).add(snap.updatedAt);
   chain=chain.then(()=>tmo(db.doc('logs/'+snap.date).set(snap))).then(()=>{
     lastSavedAt=Date.now();if(cur&&cur.date===snap.date&&cur.updatedAt===snap.updatedAt){dirty=false}
@@ -812,7 +818,7 @@ function applyCond(c){
   cur.cond=c;
   cur.exercises.forEach(e=>{if(!e.lift||e.tag!=='메인'||e.attempt)return;
     e.sets.forEach(q=>{if(q.done)return;
-      if(c==='low'){if(q.tw0==null)q.tw0=q.tw;q.tw=mround(q.tw0*.95)}
+      if(c==='low'){if(q.tw0==null)q.tw0=q.tw;q.tw=q.tw0===''?'':mround(q.tw0*.95)}
       else if(q.tw0!=null){q.tw=q.tw0;delete q.tw0}
       q.w=q.tw})});
 }
@@ -2196,7 +2202,7 @@ function adopt(){
 }
 async function boot(){
   {const pv=lsGet('gl:appv','');if(newer(pv))stale=true;else lsSet('gl:appv',APPV)}
-  S=Object.assign(clone(DEF),lsGet('gl:settings',{}));PROFILE=lsGet('gl:profile',PROFILE);
+  {const d=lsGet('gl:settings',{})||{};S=Object.assign(clone(DEF),d,{orm:Object.assign({},DEF.orm,d.orm||{})})}PROFILE=lsGet('gl:profile',PROFILE);
   cur=draft(date);render();setSync('wait');
   let c=null;
   db=c;
