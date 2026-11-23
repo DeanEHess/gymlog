@@ -176,7 +176,7 @@ const lsDel=k=>{try{localStorage.removeItem(k)}catch(e){}};
 const addDays=(d,n)=>{const x=parseD(d);x.setDate(x.getDate()+n);return fmtD(x)};
 
 let db=null,S=clone(DEF),LOGS={},BODY={},cur=null,date=todayStr(),tab='today',dirty=false,hasFocus=false,picked=null;
-const APPV='web14';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
+const APPV='web15';let lastSavedAt=0,toastT=null,toastUndo=null,firstLogSnap=true,conflict=null;const seen={};
 const tmo=p=>Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error('서버 응답 없음(20초)')),20000))]);
 let ui={},chain=Promise.resolve(),saveT=null,bodyT=null,setT=null,pend=new Set(),bodyDate=date,rest=null,restTick=null;
 
@@ -222,6 +222,7 @@ function build(week,day,prog,d){
 function draft(d){
   const s=session(d),pk=picked&&picked.date===d?picked:null,L=LOGS[d];
   if(L&&!(pk&&!(L.setsDone>0)))return clone(L);
+  if(pk&&pk.free)return{date:d,free:true,freeChosen:true,week:s.week,day:null,dayName:'자유 운동',exercises:[],note:''};
   const P=curProg(pk&&pk.prog?pk.prog:null);
   const week=pk&&pk.week!=null?pk.week:s.week,day=pk&&pk.day!=null?pk.day:s.day;
   if(day==null||!P.weeks[week]||!P.weeks[week].d[day])return{date:d,free:true,week:s.week,day:null,dayName:'프로그램 없음',exercises:[],note:''};
@@ -334,7 +335,7 @@ function pickerHtml(){
   return`<div class="grid2" style="margin-top:10px"><select id="psel" ${dis} style="grid-column:1/-1">${Object.values(PROGS).map(x=>`<option value="${x.id}" ${x.id===pid?'selected':''}>${esc(x.name)}</option>`).join('')}</select>
   <select id="wsel" ${dis}>${ws.map(w=>`<option value="${w}" ${w===wk?'selected':''}>${w}주차</option>`).join('')}</select>
   <select id="dsl" ${dis}>${cur.day==null?'<option value="">Day 선택</option>':''}${P.weeks[wk].d.map((D,i)=>`<option value="${i}" ${cur.day===i?'selected':''}>Day ${i+1} · ${esc(D.n)}</option>`).join('')}</select></div>
-  ${locked?'<div class="mute" style="margin-top:6px">이미 ✓한 세트가 있어 프로그램·주차·Day는 바꿀 수 없습니다.</div>':'<div class="row" style="margin-top:8px"><button class="btn" data-a="auto">날짜 기준 자동 선택</button></div>'}
+  ${locked?'<div class="mute" style="margin-top:6px">이미 ✓한 세트가 있어 프로그램·주차·Day는 바꿀 수 없습니다.</div>':'<div class="row" style="margin-top:8px"><button class="btn" data-a="auto">날짜 기준 자동 선택</button>'+(cur.free?'':'<button class="btn" data-a="gofree">자유 운동으로</button>')+'</div>'}
   ${ui.pickask?`<div class="panel"><b>편집한 내용이 사라집니다</b><div class="mute">운동 교체·메모·세트 편집이 새로 불러올 운동으로 대체됩니다.</div><div class="row" style="margin-top:6px"><button class="btn pri" data-a="pickok">바꾸기</button><button class="btn" data-a="pickno">취소</button></div></div>`:''}`;
 }
 function vTodayList(){
@@ -342,7 +343,7 @@ function vTodayList(){
   const s=session(date),d=parseD(date),st=stats(cur);
   let h=tutToday()+`<div class="card"><div class="row"><input type="date" id="dsel" value="${date}" style="flex:1;text-align:left"><button class="btn" data-a="today">오늘</button></div>`;
   if(cur.free){
-    h+=`${cur.legacy?'':pickerHtml()}<p class="mute" style="margin:10px 0 0">${cur.legacy?'📦 노트에서 가져온 과거 기록입니다 ('+esc(strip(cur.dayName||''))+'). 수정해도 됩니다.':(s.pre?'프로그램 시작 전입니다.':'오늘은 프로그램상 휴식일입니다.')+' 위에서 Day를 고르면 불러옵니다. 아니면 자유 운동을 기록하세요.'}</p>
+    h+=`${cur.legacy?'':pickerHtml()}<p class="mute" style="margin:10px 0 0">${cur.legacy?'📦 노트에서 가져온 과거 기록입니다 ('+esc(strip(cur.dayName||''))+'). 수정해도 됩니다.':cur.freeChosen?'자유 운동으로 바꿨습니다. 프로그램 운동으로 돌아가려면 위에서 날짜 기준 자동 선택을 누르세요.':(s.pre?'프로그램 시작 전입니다.':'오늘은 프로그램상 휴식일입니다.')+' 위에서 Day를 고르면 불러옵니다. 아니면 자유 운동을 기록하세요.'}</p>
     <div style="margin-top:8px"><button class="btn" data-a="addex">+ 자유 운동 기록</button></div></div>`+lackCard();
   }else{
     const P=curProg(dp()),wt=(P.weeks[cur.week]||{}).t||'';
@@ -398,14 +399,14 @@ function pickSheet(){
   if(ps.step===0)h+=`<div class="bigchips">${Object.values(PROGS).map(x=>`<button data-a="pkp" data-v="${esc(x.id)}" aria-pressed="${x.id===pid}">${esc(x.name)}</button>`).join('')}</div>`;
   else if(ps.step===1)h+=`<div class="bigchips">${ws.map(w=>`<button data-a="pkw" data-v="${w}" aria-pressed="${w===cur.week&&pid===dp()}">${w}주차</button>`).join('')}</div>`;
   else{const W=P.weeks[ps.week]||P.weeks[ws[0]];h+=`<div class="bigchips">${W.d.map((D,k)=>`<button data-a="pkd" data-v="${k}" aria-pressed="${k===cur.day&&pid===dp()&&ps.week===cur.week}">Day ${k+1}<br><span style="font-size:12px">${esc(strip(D.n))}</span></button>`).join('')}</div>`}
-  h+=`<div class="row">${ps.step?`<button class="btn" data-a="pkback">← 뒤로</button>`:''}<button class="btn" data-a="auto">날짜 기준 자동</button><button class="btn" data-a="pickt">닫기</button></div></div>`;
+  h+=`<div class="row">${ps.step?`<button class="btn" data-a="pkback">← 뒤로</button>`:''}<button class="btn" data-a="auto">날짜 기준 자동</button>${cur.free?'':'<button class="btn" data-a="gofree">자유 운동으로</button>'}<button class="btn" data-a="pickt">닫기</button></div></div>`;
   return h;
 }
 function vTodayFocus(){
   const s=session(date),d=parseD(date),st=stats(cur),n=cur.exercises.length,i=fxCur();
   let h=(window.tutToday?tutToday():'')+`<div class="card fxhead"><div class="row"><input type="date" id="dsel" value="${date}" style="flex:1;text-align:left"><button class="btn" data-a="today">오늘</button></div>`;
   if(cur.free){
-    h+=`<p class="mute" style="margin:10px 0 0">${s.pre?'프로그램 시작 전입니다.':'오늘은 프로그램상 휴식일입니다.'} 프로그램의 Day를 고르거나 자유 운동을 기록하세요.</p>
+    h+=`<p class="mute" style="margin:10px 0 0">${cur.freeChosen?'자유 운동으로 바꿨습니다. 프로그램 운동으로 돌아가려면 Day 고르기 → 날짜 기준 자동을 누르세요.':(s.pre?'프로그램 시작 전입니다.':'오늘은 프로그램상 휴식일입니다.')+' 프로그램의 Day를 고르거나 자유 운동을 기록하세요.'}</p>
     <div class="row" style="margin-top:8px"><button class="btn" data-a="pickt">Day 고르기</button>${n?'':'<button class="btn pri" data-a="addex">+ 자유 운동 기록</button>'}</div>`;
   }else{
     const P=curProg(dp()),wt=(P.weeks[cur.week]||{}).t||'';
@@ -1909,6 +1910,7 @@ document.addEventListener('click',e=>{
   else if(a==='acvok'){const p_=acvPend;acvPend=null;acvMsg='';if(p_)storeImported(p_)}
   else if(a==='acvno'){acvPend=null;acvMsg='취소했습니다.';render()}
   else if(a==='auto'){applyPick({date,auto:true})}
+  else if(a==='gofree'){applyPick({date,free:true})}
   else if(a==='pickok'){picked=ui.pickask;cur=draft(date);ui={};render()}
   else if(a==='pickno'){ui={};render()}
   else if(a==='pickt'){pickOpen=!pickOpen;pks=null;render()}
